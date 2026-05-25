@@ -1,0 +1,9 @@
+api/
+server.js
+railway.json
+.data/
+.codecanic/
+.env
+.env.local
+node_modules/
+ios/
