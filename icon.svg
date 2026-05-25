@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Codecanic logo">
+  <rect width="512" height="512" rx="96" fill="#111827"/>
+  <path d="M354 164c-28-28-61-42-99-42-40 0-73 13-99 40s-39 59-39 98 13 72 39 98 59 40 99 40c38 0 71-14 99-42l-47-50c-14 15-31 23-52 23-20 0-37-7-50-20-13-14-20-30-20-49s7-35 20-49c13-13 30-20 50-20 21 0 38 8 52 23l47-50Z" fill="#ffffff"/>
+  <path d="M356 260c0 57-46 103-103 103" fill="none" stroke="#14b8a6" stroke-width="26" stroke-linecap="round"/>
+</svg>

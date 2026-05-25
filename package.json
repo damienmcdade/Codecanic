@@ -1,0 +1,20 @@
+{
+  "name": "codecanic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codecanic MVP: scan infrastructure, review reports, and approve code repairs.",
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx serve .",
+    "check": "node scripts/check.mjs"
+  },
+  "keywords": [
+    "code-scanning",
+    "ai-repair",
+    "devtools",
+    "infrastructure"
+  ],
+  "author": "Codecanic",
+  "license": "UNLICENSED",
+  "devDependencies": {}
+}

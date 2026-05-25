@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <title>Codecanic</title>
+    <meta
+      name="description"
+      content="Codecanic scans repos and infrastructure, builds repair reports, and lets teams approve fixes."
+    />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <a class="brand" href="#overview" aria-label="Codecanic home">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span>
+            <strong>Codecanic</strong>
+            <small>Infrastructure repair</small>
+          </span>
+        </a>
+        <nav class="nav-links">
+          <a class="active" href="#overview">Overview</a>
+          <a href="#connectors">Connectors</a>
+          <a href="#scan">Scan</a>
+          <a href="#repairs">Repairs</a>
+          <a href="#billing">Billing</a>
+        </nav>
+        <div class="tier-card">
+          <span class="label">Current tier</span>
+          <strong id="current-tier">Pro</strong>
+          <span id="tier-speed">Faster queue, 8 workers</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Unified code operations</p>
+            <h1>Scan, report, and repair code across your stack.</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost" type="button" id="export-report">Export report</button>
+            <button class="primary" type="button" id="run-scan">Run full scan</button>
+          </div>
+        </header>
+
+        <section class="hero-panel" id="overview" aria-label="Codecanic overview">
+          <div class="hero-copy">
+            <span class="status-dot">Live MVP</span>
+            <h2>One control room for repo health, infrastructure drift, and approved fixes.</h2>
+            <p>
+              Connect code hosts, deployment platforms, and app projects. Codecanic builds a
+              prioritized repair report, then lets users approve all fixes or only the segments
+              they trust.
+            </p>
+            <div class="hero-actions">
+              <button class="primary" type="button" data-jump="#connectors">Connect sources</button>
+              <button class="secondary" type="button" data-jump="#billing">View plans</button>
+            </div>
+          </div>
+          <div class="signal-board" aria-label="Scan health summary">
+            <div class="signal-item critical">
+              <span>Critical</span>
+              <strong id="critical-count">6</strong>
+            </div>
+            <div class="signal-item warning">
+              <span>Warnings</span>
+              <strong id="warning-count">18</strong>
+            </div>
+            <div class="signal-item clean">
+              <span>Autofixable</span>
+              <strong id="autofix-count">21</strong>
+            </div>
+            <div class="scan-meter" aria-hidden="true">
+              <span></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-grid">
+          <article class="panel" id="connectors">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Source connections</p>
+                <h2>Connect existing platforms</h2>
+              </div>
+              <button class="icon-button" type="button" aria-label="Refresh connectors">↻</button>
+            </div>
+            <div class="connector-list" id="connector-list"></div>
+          </article>
+
+          <article class="panel" id="scan">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Scan pipeline</p>
+                <h2>Current run</h2>
+              </div>
+              <span class="pill" id="scan-state">Ready</span>
+            </div>
+            <div class="scan-timeline" id="scan-timeline"></div>
+          </article>
+        </section>
+
+        <section class="panel" id="repairs">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Review before repair</p>
+              <h2>Findings report</h2>
+            </div>
+            <div class="segmented" role="group" aria-label="Repair scope">
+              <button class="selected" type="button" data-filter="all">All</button>
+              <button type="button" data-filter="critical">Critical</button>
+              <button type="button" data-filter="security">Security</button>
+              <button type="button" data-filter="performance">Performance</button>
+            </div>
+          </div>
+          <div class="repair-toolbar">
+            <label class="checkbox-row">
+              <input type="checkbox" id="select-all" />
+              <span>Select all visible repairs</span>
+            </label>
+            <button class="secondary" type="button" id="approve-selected">Approve selected</button>
+          </div>
+          <div class="findings" id="findings"></div>
+        </section>
+
+        <section class="panel" id="billing">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Subscriptions</p>
+              <h2>Tiered repair speed</h2>
+            </div>
+            <span class="pill">Stripe-ready checkout</span>
+          </div>
+          <div class="pricing-grid" id="pricing-grid"></div>
+        </section>
+
+        <section class="panel deploy-panel" id="deployment">
+          <div>
+            <p class="eyebrow">Launch path</p>
+            <h2>Web, iOS, Android, and infrastructure targets</h2>
+            <p>
+              This MVP ships as a PWA for the web. The same product surface can be wrapped with
+              Capacitor for App Store and Google Play releases, while backend workers handle
+              connector authorization, scans, repair jobs, billing, and audit logs.
+            </p>
+          </div>
+          <div class="deploy-tags">
+            <span>GitHub App</span>
+            <span>Vercel Project</span>
+            <span>Railway Workers</span>
+            <span>Xcode Projects</span>
+            <span>Stripe Billing</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

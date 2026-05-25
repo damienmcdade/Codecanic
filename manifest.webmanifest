@@ -1,0 +1,17 @@
+{
+  "name": "Codecanic",
+  "short_name": "Codecanic",
+  "description": "Scan infrastructure, review code reports, and approve repairs.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
