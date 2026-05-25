@@ -1,0 +1,273 @@
+import { createHmac, randomUUID } from "node:crypto";
+import { getConnector, json } from "./_lib.js";
+import { read, write } from "./_data.js";
+import { currentUserContext } from "./_auth.js";
+
+const tokenExchange = {
+  GitHub: {
+    url: "https://github.com/login/oauth/access_token",
+    accept: "application/json"
+  },
+  Vercel: {
+    url: "https://api.vercel.com/v2/oauth/access_token"
+  },
+  GitLab: {
+    url: "https://gitlab.com/oauth/token"
+  },
+  Bitbucket: {
+    url: "https://bitbucket.org/site/oauth2/access_token",
+    basicAuth: true
+  }
+};
+
+function signState(payload) {
+  const secret = process.env.CODECANIC_SESSION_SECRET || "codecanic-development-secret-do-not-use-in-prod";
+  const value = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", secret).update(value).digest("base64url");
+  return `${value}.${signature}`;
+}
+
+function verifyState(token) {
+  if (!token || typeof token !== "string" || !token.includes(".")) return null;
+  const [value, signature] = token.split(".");
+  const secret = process.env.CODECANIC_SESSION_SECRET || "codecanic-development-secret-do-not-use-in-prod";
+  const expected = createHmac("sha256", secret).update(value).digest("base64url");
+  if (signature.length !== expected.length) return null;
+  if (signature !== expected) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (!payload.expiresAt || payload.expiresAt < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function redirectUriFor(req, provider) {
+  if (process.env.CODECANIC_REDIRECT_URI) return process.env.CODECANIC_REDIRECT_URI;
+  const protocol = req.headers["x-forwarded-proto"] || "http";
+  const host = req.headers.host || "codecanic.local";
+  return `${protocol}://${host}/api/oauth/callback?provider=${encodeURIComponent(provider)}`;
+}
+
+function clientSecretEnvFor(connectorEnv) {
+  return connectorEnv.replace(/_CLIENT_ID$/, "_CLIENT_SECRET");
+}
+
+async function start(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const provider = url.searchParams.get("provider");
+  const connector = provider ? getConnector(provider) : null;
+  if (!connector) {
+    json(res, 400, { error: "Unknown provider" });
+    return;
+  }
+
+  const context = await currentUserContext(req);
+  if (!context) {
+    json(res, 401, { error: "Sign in to connect providers." });
+    return;
+  }
+  const requestedOrg =
+    req.headers["x-codecanic-org"] || url.searchParams.get("organization") || null;
+  const organization = requestedOrg
+    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
+    : context.organizations[0];
+  if (!organization) {
+    json(res, 400, { error: "Select an organization before connecting providers." });
+    return;
+  }
+
+  const clientId = process.env[connector.env];
+  if (!clientId) {
+    json(res, 200, {
+      provider,
+      configured: false,
+      status: "configuration_required",
+      requiredEnv: connector.env,
+      message: `${provider} needs ${connector.env} before live authorization can start.`
+    });
+    return;
+  }
+
+  if (provider === "Railway" || provider === "Xcode") {
+    json(res, 200, {
+      provider,
+      status: "manual_token_required",
+      message: `${provider} uses a manual token. Paste a personal access token in settings.`
+    });
+    return;
+  }
+
+  const state = signState({
+    nonce: randomUUID(),
+    userId: context.user.id,
+    organizationId: organization.id,
+    provider,
+    expiresAt: Date.now() + 10 * 60_000
+  });
+  const authUrl = new URL(connector.authBase);
+  authUrl.searchParams.set("client_id", clientId);
+  authUrl.searchParams.set("redirect_uri", redirectUriFor(req, provider));
+  authUrl.searchParams.set("state", state);
+  if (connector.scopes) authUrl.searchParams.set("scope", connector.scopes);
+  if (provider === "GitLab") authUrl.searchParams.set("response_type", "code");
+  json(res, 200, { provider, status: "authorization_ready", authUrl: authUrl.toString() });
+}
+
+async function exchangeCode(provider, code, req) {
+  const connector = getConnector(provider);
+  const exchange = tokenExchange[provider];
+  if (!connector || !exchange) throw new Error("Provider not supported for token exchange");
+
+  const clientId = process.env[connector.env];
+  const clientSecret = process.env[clientSecretEnvFor(connector.env)];
+  if (!clientId || !clientSecret) {
+    throw new Error(`${provider} client secret is missing (${clientSecretEnvFor(connector.env)})`);
+  }
+
+  const params = new URLSearchParams({
+    code,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUriFor(req, provider)
+  });
+  const headers = { Accept: exchange.accept || "application/json" };
+  if (exchange.basicAuth) {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+  } else {
+    params.set("client_id", clientId);
+    params.set("client_secret", clientSecret);
+    headers["Content-Type"] = "application/x-www-form-urlencoded";
+  }
+
+  const response = await fetch(exchange.url, { method: "POST", headers, body: params.toString() });
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = Object.fromEntries(new URLSearchParams(text));
+  }
+  if (!response.ok || data.error) {
+    const message = data.error_description || data.error || `Token exchange failed (${response.status})`;
+    throw new Error(message);
+  }
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || null,
+    tokenType: data.token_type || "bearer",
+    scope: data.scope || null,
+    expiresIn: data.expires_in || null
+  };
+}
+
+function renderHtml(title, message) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>
+<body style="font-family:system-ui;padding:32px;background:#0a1019;color:#f8fafc;">
+<h1 style="color:#14b8a6;">${title}</h1>
+<p>${message}</p>
+<p><a href="/" style="color:#2dd4bf;">Return to Codecanic</a></p>
+<script>setTimeout(function(){window.location.href="/?connected=1";},1500);</script>
+</body></html>`;
+}
+
+function sendHtml(res, status, body) {
+  res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(body);
+}
+
+async function callback(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const provider = url.searchParams.get("provider");
+  const code = url.searchParams.get("code");
+  const stateToken = url.searchParams.get("state");
+  const error = url.searchParams.get("error_description") || url.searchParams.get("error");
+
+  if (error) {
+    sendHtml(res, 400, renderHtml("Authorization cancelled", error));
+    return;
+  }
+  if (!provider || !code || !stateToken) {
+    sendHtml(res, 400, renderHtml("Missing parameters", "Provider, code, and state are required."));
+    return;
+  }
+  const payload = verifyState(stateToken);
+  if (!payload || payload.provider !== provider) {
+    sendHtml(res, 400, renderHtml("State validation failed", "OAuth state is invalid or expired."));
+    return;
+  }
+
+  try {
+    const token = await exchangeCode(provider, code, req);
+    const now = new Date().toISOString();
+    const existingState = await read();
+    const orgValid = existingState.memberships.some(
+      (m) => m.userId === payload.userId && m.organizationId === payload.organizationId
+    );
+    if (!orgValid) {
+      sendHtml(res, 403, renderHtml("Access denied", "You no longer have access to that organization."));
+      return;
+    }
+
+    await write(async (state) => ({
+      ...state,
+      connectorCreds: [
+        {
+          id: randomUUID(),
+          provider,
+          organizationId: payload.organizationId,
+          userId: payload.userId,
+          accessToken: token.accessToken,
+          refreshToken: token.refreshToken,
+          tokenType: token.tokenType,
+          scope: token.scope,
+          expiresIn: token.expiresIn,
+          updatedAt: now
+        },
+        ...state.connectorCreds.filter(
+          (entry) => !(entry.provider === provider && entry.organizationId === payload.organizationId)
+        )
+      ]
+    }));
+
+    sendHtml(res, 200, renderHtml(`${provider} connected`, "Authorization complete. Returning to your dashboard…"));
+  } catch (err) {
+    sendHtml(res, 502, renderHtml("Authorization failed", err.message));
+  }
+}
+
+async function status(req, res) {
+  const context = await currentUserContext(req);
+  if (!context) {
+    json(res, 401, { error: "Sign in required" });
+    return;
+  }
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const requestedOrg = req.headers["x-codecanic-org"] || url.searchParams.get("organization");
+  const organization = requestedOrg
+    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
+    : context.organizations[0];
+  if (!organization) {
+    json(res, 200, { connections: [] });
+    return;
+  }
+  const state = await read();
+  const connections = state.connectorCreds
+    .filter((entry) => entry.organizationId === organization.id)
+    .map(({ provider, scope, tokenType, updatedAt }) => ({ provider, scope, tokenType, updatedAt }));
+  json(res, 200, { connections });
+}
+
+export default async function handler(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const action = url.pathname.replace(/^\/api\/oauth\/?/, "");
+  try {
+    if (action === "start" && req.method === "POST") return await start(req, res);
+    if (action === "callback" && req.method === "GET") return await callback(req, res);
+    if (action === "status" && req.method === "GET") return await status(req, res);
+    json(res, 404, { error: "Unknown oauth action" });
+  } catch (error) {
+    json(res, 400, { error: error.message });
+  }
+}

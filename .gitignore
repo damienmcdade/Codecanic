@@ -1,3 +1,6 @@
 .vercel
 .codecanic
 public
+.data
+.env
+.env.local

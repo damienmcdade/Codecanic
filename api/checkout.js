@@ -1,4 +1,5 @@
-import { json, readBody } from "./_lib.js";
+import { json, readBody, resolveOrgContext } from "./_lib.js";
+import { write } from "./_data.js";
 
 const priceEnv = {
   Basic: "STRIPE_BASIC_PRICE_ID",
@@ -13,9 +14,25 @@ export default async function handler(req, res) {
   }
 
   try {
+    const context = await resolveOrgContext(req);
+    if (!context.authenticated) {
+      json(res, 401, { error: "Sign in to choose a plan." });
+      return;
+    }
+    if (!context.organization) {
+      json(res, 400, { error: "Select an organization before choosing a plan." });
+      return;
+    }
+
     const body = await readBody(req);
     const plan = body.plan;
     if (plan === "Free") {
+      await write(async (state) => ({
+        ...state,
+        organizations: state.organizations.map((org) =>
+          org.id === context.organization.id ? { ...org, plan: "Free" } : org
+        )
+      }));
       json(res, 200, { plan, status: "free_plan_active" });
       return;
     }

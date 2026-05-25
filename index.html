@@ -16,10 +16,13 @@
     <div class="shell">
       <aside class="sidebar" aria-label="Primary navigation">
         <a class="brand" href="#overview" aria-label="Codecanic home">
-          <span class="brand-mark" aria-hidden="true">C</span>
+          <span class="brand-mark" aria-hidden="true">
+            <span class="brand-gear"></span>
+            C
+          </span>
           <span>
             <strong>Codecanic</strong>
-            <small>Infrastructure repair</small>
+            <small>Cyber repair bay</small>
           </span>
         </a>
         <nav class="nav-links">
@@ -33,6 +36,27 @@
           <span class="label">Current tier</span>
           <strong id="current-tier">Pro</strong>
           <span id="tier-speed">Faster queue, 8 workers</span>
+        </div>
+        <div class="account-card" id="account-card">
+          <div class="account-signed-out" hidden>
+            <span class="label">Account</span>
+            <strong>Guest</strong>
+            <button class="secondary" type="button" data-auth-open="signin">Sign in</button>
+            <button class="ghost" type="button" data-auth-open="signup">Create account</button>
+          </div>
+          <div class="account-signed-in" hidden>
+            <span class="label">Signed in</span>
+            <strong id="account-name"></strong>
+            <span id="account-email" class="muted"></span>
+            <label class="org-switcher">
+              <span>Organization</span>
+              <select id="org-switcher"></select>
+            </label>
+            <div class="account-actions">
+              <button class="ghost" type="button" id="new-org-button">New org</button>
+              <button class="ghost" type="button" id="sign-out-button">Sign out</button>
+            </div>
+          </div>
         </div>
       </aside>
 
@@ -50,8 +74,8 @@
 
         <section class="hero-panel" id="overview" aria-label="Codecanic overview">
           <div class="hero-copy">
-            <span class="status-dot">Live MVP</span>
-            <h2>One control room for repo health, infrastructure drift, and approved fixes.</h2>
+            <span class="status-dot">Bay online</span>
+            <h2>Pull every repo into the garage. Diagnose the stack. Approve the repair.</h2>
             <p>
               Connect code hosts, deployment platforms, and app projects. Codecanic builds a
               prioritized repair report, then lets users approve all fixes or only the segments
@@ -62,23 +86,46 @@
               <button class="secondary" type="button" data-jump="#billing">View plans</button>
             </div>
           </div>
-          <div class="signal-board" aria-label="Scan health summary">
-            <div class="signal-item critical">
-              <span>Critical</span>
-              <strong id="critical-count">6</strong>
-            </div>
-            <div class="signal-item warning">
-              <span>Warnings</span>
-              <strong id="warning-count">18</strong>
-            </div>
-            <div class="signal-item clean">
-              <span>Autofixable</span>
-              <strong id="autofix-count">21</strong>
-            </div>
-            <div class="scan-meter" aria-hidden="true">
-              <span></span>
+          <div class="garage-visual" aria-label="Cyber garage diagnostics bay">
+            <img src="./assets/cyber-garage.svg" alt="" aria-hidden="true" />
+            <div class="scanner-beam" aria-hidden="true"></div>
+            <div class="signal-board" aria-label="Scan health summary">
+              <div class="signal-item critical">
+                <span>Critical</span>
+                <strong id="critical-count">6</strong>
+              </div>
+              <div class="signal-item warning">
+                <span>Warnings</span>
+                <strong id="warning-count">18</strong>
+              </div>
+              <div class="signal-item clean">
+                <span>Autofixable</span>
+                <strong id="autofix-count">21</strong>
+              </div>
+              <div class="scan-meter" aria-hidden="true">
+                <span></span>
+              </div>
             </div>
           </div>
+        </section>
+
+        <section class="bay-strip" aria-label="Active repair bays">
+          <a href="#connectors">
+            <span>01</span>
+            Intake
+          </a>
+          <a href="#scan">
+            <span>02</span>
+            Diagnostics
+          </a>
+          <a href="#repairs">
+            <span>03</span>
+            Repair lift
+          </a>
+          <a href="#billing">
+            <span>04</span>
+            Boost lane
+          </a>
         </section>
 
         <section class="section-grid">
@@ -208,6 +255,40 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="auth-modal" id="auth-modal" hidden aria-hidden="true">
+      <div class="auth-modal-card" role="dialog" aria-labelledby="auth-modal-title">
+        <header>
+          <h2 id="auth-modal-title">Sign in</h2>
+          <button class="icon-button" type="button" id="auth-close" aria-label="Close">×</button>
+        </header>
+        <div class="auth-tabs" role="tablist">
+          <button type="button" data-auth-tab="signin" class="selected">Sign in</button>
+          <button type="button" data-auth-tab="signup">Create account</button>
+        </div>
+        <form id="auth-form">
+          <label data-auth-only="signup">
+            <span>Name</span>
+            <input name="name" type="text" autocomplete="name" />
+          </label>
+          <label data-auth-only="signup">
+            <span>Organization name</span>
+            <input name="organization" type="text" placeholder="Acme Inc" />
+          </label>
+          <label>
+            <span>Email</span>
+            <input name="email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            <span>Password</span>
+            <input name="password" type="password" minlength="8" autocomplete="current-password" required />
+          </label>
+          <p class="auth-error" id="auth-error" hidden></p>
+          <button class="primary" type="submit" id="auth-submit">Sign in</button>
+        </form>
+      </div>
+    </div>
+
     <script src="./app.js" type="module"></script>
   </body>
 </html>

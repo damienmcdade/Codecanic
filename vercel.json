@@ -2,6 +2,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "public",
   "cleanUrls": true,
+  "rewrites": [
+    { "source": "/api/auth/:action", "destination": "/api/auth" },
+    { "source": "/api/oauth/:action", "destination": "/api/oauth" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

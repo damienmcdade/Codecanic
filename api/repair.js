@@ -1,4 +1,4 @@
-import { json, planFor, readBody } from "./_lib.js";
+import { json, planFor, readBody, resolveOrgContext } from "./_lib.js";
 import { randomUUID } from "node:crypto";
 
 export default async function handler(req, res) {
@@ -8,6 +8,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    const context = await resolveOrgContext(req);
+    if (!context.authenticated) {
+      json(res, 401, { error: "Sign in to approve repairs." });
+      return;
+    }
+    if (!context.organization) {
+      json(res, 400, { error: "Create or select an organization before approving repairs." });
+      return;
+    }
+
     const body = await readBody(req);
     const findingIds = Array.isArray(body.findingIds) ? body.findingIds : [];
     if (!findingIds.length) {
@@ -15,12 +25,13 @@ export default async function handler(req, res) {
       return;
     }
 
-    const plan = planFor(body.tier || "Free");
+    const plan = planFor(body.tier || context.organization.plan || "Free");
     json(res, 200, {
       id: randomUUID(),
       status: "queued",
+      organization: context.organization.slug,
       findingIds,
-      branchName: `codecanic/repair-${Date.now()}`,
+      branchName: `codecanic/${context.organization.slug}-repair-${Date.now()}`,
       pullRequestMode: "draft",
       workerCount: plan.workers,
       estimatedStartMs: plan.queueDelayMs,

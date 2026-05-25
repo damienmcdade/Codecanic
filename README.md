@@ -31,13 +31,21 @@ npm run dev
 
 ## Operating Endpoints
 
-- `GET /api/connectors?name=GitHub` returns connector authorization status and an OAuth URL when the matching environment variable is configured.
+- `POST /api/auth/signup` creates a user, provisions a personal workspace, and sets a signed session cookie.
+- `POST /api/auth/login` authenticates an existing user and returns their organizations.
+- `POST /api/auth/logout` invalidates the active session.
+- `GET /api/auth/me` returns the current user + memberships, or `{ user: null }` for guests.
+- `GET /api/orgs` lists organizations the signed-in user belongs to.
+- `POST /api/orgs` creates a new organization owned by the signed-in user.
+- `GET /api/connectors?name=GitHub` returns connector authorization status; when the matching client ID is set and the user is signed in, it returns a one-time signed OAuth URL.
+- `GET /api/oauth/callback?provider=...&code=...&state=...` is the redirect target; it verifies the signed state, exchanges the code for an access token, and persists credentials scoped to the active organization.
+- `GET /api/oauth/status` lists provider connections for the active organization.
 - `GET /api/health` returns deployment identity for Vercel/Railway sync checks.
-- `POST /api/scan` creates a scan job and returns a prioritized report with findings and summary counts.
-- `POST /api/repair` queues approved findings for patch generation and pull request preparation.
-- `POST /api/checkout` creates a Stripe subscription checkout session when Stripe environment variables are present.
+- `POST /api/scan` creates a scan job for the active organization and returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query.
+- `POST /api/repair` queues approved findings for patch generation and pull request preparation (auth-gated).
+- `POST /api/checkout` creates a Stripe subscription checkout session for the active organization when Stripe environment variables are present.
 
-Copy `.env.example` into your deployment environment and fill in the provider credentials owned by your company.
+Copy `.env.example` into your deployment environment and fill in the provider credentials owned by your company. Each OAuth-capable provider needs both `*_CLIENT_ID` and `*_CLIENT_SECRET`; sessions are signed with `CODECANIC_SESSION_SECRET`.
 
 ## Deployment Targets
 
@@ -48,9 +56,9 @@ Copy `.env.example` into your deployment environment and fill in the provider cr
 
 ## Next Build Steps
 
-1. Add authentication and organization workspaces.
-2. Add Stripe checkout and subscription webhooks.
-3. Implement real connector OAuth flows.
-4. Build backend scan and repair job queues.
+1. ~~Add authentication and organization workspaces.~~ ✓ Session cookies + JSON-file user/org/membership store at `${CODECANIC_DATA_DIR}/codecanic.json`.
+2. Add Stripe checkout and subscription webhooks (checkout is wired; webhook + state sync still pending).
+3. ~~Implement real connector OAuth flows.~~ ✓ Signed-state authorization URL → `/api/oauth/callback` → provider-specific token exchange (GitHub, Vercel, GitLab, Bitbucket); per-org credentials persisted.
+4. Build backend scan and repair job queues (currently synchronous stubs).
 5. Add pull request generation with approval/audit controls.
 6. Add mobile packaging with Capacitor for iOS and Android.

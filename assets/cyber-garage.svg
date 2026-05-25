@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" role="img" aria-label="Cyber garage diagnostic machine">
+  <defs>
+    <linearGradient id="metal" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#1f2937"/>
+      <stop offset=".48" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" x2="1">
+      <stop offset="0" stop-color="#06b6d4"/>
+      <stop offset=".55" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="900" height="620" fill="#0b1018"/>
+  <path d="M70 492h760l-42 70H112L70 492Z" fill="#151f2e"/>
+  <path d="M124 146h652v346H124z" fill="#0f172a" stroke="#334155" stroke-width="4"/>
+  <path d="M150 175h244v94H150zM506 175h244v94H506z" fill="#111827" stroke="#475569" stroke-width="3"/>
+  <path d="M185 209h174M542 209h174M185 236h128M542 236h98" stroke="#14b8a6" stroke-width="8" stroke-linecap="round" opacity=".85"/>
+  <path d="M254 373c0-64 52-116 116-116h160c64 0 116 52 116 116v119H254V373Z" fill="url(#metal)" stroke="#64748b" stroke-width="5"/>
+  <path d="M316 385c0-42 34-76 76-76h116c42 0 76 34 76 76v47H316v-47Z" fill="#020617" stroke="#14b8a6" stroke-width="5"/>
+  <path d="M338 417h224" stroke="url(#glow)" stroke-width="12" stroke-linecap="round" filter="url(#softGlow)"/>
+  <circle cx="270" cy="370" r="42" fill="#111827" stroke="#f97316" stroke-width="8"/>
+  <circle cx="630" cy="370" r="42" fill="#111827" stroke="#06b6d4" stroke-width="8"/>
+  <path d="M450 84v168M450 84l-90 70M450 84l90 70" stroke="#64748b" stroke-width="10" stroke-linecap="round"/>
+  <rect x="406" y="230" width="88" height="58" rx="12" fill="#0f172a" stroke="#14b8a6" stroke-width="5"/>
+  <path d="M450 288v64" stroke="#f97316" stroke-width="9" stroke-linecap="round" filter="url(#softGlow)"/>
+  <path d="M116 514h668" stroke="#475569" stroke-width="4" stroke-dasharray="18 16"/>
+  <path d="M168 540h118M612 540h118" stroke="#14b8a6" stroke-width="8" stroke-linecap="round"/>
+  <g opacity=".35">
+    <path d="M92 94h74v74H92zM734 94h74v74h-74z" fill="none" stroke="#64748b" stroke-width="4"/>
+    <path d="M112 130h34M754 130h34" stroke="#f97316" stroke-width="7" stroke-linecap="round"/>
+  </g>
+</svg>

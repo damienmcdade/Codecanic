@@ -2,21 +2,31 @@ import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
+import auth from "./api/auth.js";
 import checkout from "./api/checkout.js";
 import connectors from "./api/connectors.js";
 import health from "./api/health.js";
+import oauth from "./api/oauth.js";
+import orgs from "./api/orgs.js";
 import repair from "./api/repair.js";
 import scan from "./api/scan.js";
 
 const port = Number(process.env.PORT || 3000);
 const publicDir = join(process.cwd(), "public");
-const apiRoutes = new Map([
+
+const exactRoutes = new Map([
   ["/api/checkout", checkout],
   ["/api/connectors", connectors],
   ["/api/health", health],
+  ["/api/orgs", orgs],
   ["/api/repair", repair],
   ["/api/scan", scan]
 ]);
+
+const prefixRoutes = [
+  { prefix: "/api/auth/", handler: auth },
+  { prefix: "/api/oauth/", handler: oauth }
+];
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -66,10 +76,16 @@ async function serveStatic(req, res) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  const handler = apiRoutes.get(url.pathname);
+  const handler = exactRoutes.get(url.pathname);
 
   if (handler) {
     await handler(req, res);
+    return;
+  }
+
+  const prefixed = prefixRoutes.find(({ prefix }) => url.pathname.startsWith(prefix));
+  if (prefixed) {
+    await prefixed.handler(req, res);
     return;
   }
 

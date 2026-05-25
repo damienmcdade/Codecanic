@@ -39,11 +39,13 @@ const defaultState = {
   connectors: {},
   activeReport: null,
   repairJobs: [],
-  audit: ["Workspace created"]
+  audit: ["Workspace created"],
+  activeOrgSlug: null
 };
 
 const state = loadState();
 let activeFilter = "all";
+const session = { user: null, organizations: [] };
 
 const connectorList = document.querySelector("#connector-list");
 const scanTimeline = document.querySelector("#scan-timeline");
@@ -54,6 +56,7 @@ const toast = document.querySelector("#toast");
 const jobList = document.querySelector("#job-list");
 const auditList = document.querySelector("#audit-list");
 const queueCount = document.querySelector("#queue-count");
+const navTargets = [...document.querySelectorAll(".nav-links a, .bay-strip a")];
 
 function loadState() {
   try {
@@ -79,13 +82,33 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.remove("visible"), 2800);
 }
 
+function fireControl(control) {
+  control.classList.remove("is-firing");
+  void control.offsetWidth;
+  control.classList.add("is-firing");
+  window.setTimeout(() => control.classList.remove("is-firing"), 480);
+}
+
+function activeOrg() {
+  return session.organizations.find((org) => org.slug === state.activeOrgSlug) || session.organizations[0] || null;
+}
+
 async function api(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const org = activeOrg();
+  if (org) headers["X-Codecanic-Org"] = org.slug;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    credentials: "same-origin",
+    headers,
     ...options
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Request failed.");
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const err = new Error(data.error || "Request failed.");
+    err.status = response.status;
+    throw err;
+  }
   return data;
 }
 
@@ -122,6 +145,7 @@ function renderConnectors() {
 }
 
 function renderTimeline(activeIndex = state.activeReport ? scanSteps.length : -1) {
+  document.body.classList.toggle("scan-active", activeIndex >= 0 && activeIndex < scanSteps.length);
   scanTimeline.innerHTML = scanSteps
     .map((step, index) => {
       const complete = activeIndex > index;
@@ -223,7 +247,30 @@ function renderSummary() {
   document.querySelector("#tier-speed").textContent = `${plan.speed}, ${plan.workers}`;
 }
 
+function renderAccount() {
+  const card = document.querySelector("#account-card");
+  if (!card) return;
+  const signedOut = card.querySelector(".account-signed-out");
+  const signedIn = card.querySelector(".account-signed-in");
+  if (session.user) {
+    signedOut.hidden = true;
+    signedIn.hidden = false;
+    card.querySelector("#account-name").textContent = session.user.name || session.user.email;
+    card.querySelector("#account-email").textContent = session.user.email;
+    const select = card.querySelector("#org-switcher");
+    const current = activeOrg();
+    select.innerHTML = session.organizations
+      .map((org) => `<option value="${org.slug}">${org.name}</option>`)
+      .join("");
+    if (current) select.value = current.slug;
+  } else {
+    signedOut.hidden = false;
+    signedIn.hidden = true;
+  }
+}
+
 function renderAll() {
+  renderAccount();
   renderConnectors();
   renderTimeline();
   renderFindings();
@@ -231,6 +278,107 @@ function renderAll() {
   renderJobs();
   renderAudit();
   renderSummary();
+}
+
+async function refreshSession() {
+  try {
+    const data = await api("/api/auth/me");
+    session.user = data.user || null;
+    session.organizations = data.organizations || [];
+    if (session.user) {
+      const current = activeOrg();
+      state.activeOrgSlug = current ? current.slug : null;
+      saveState();
+    } else {
+      state.activeOrgSlug = null;
+    }
+  } catch {
+    session.user = null;
+    session.organizations = [];
+  }
+  renderAccount();
+}
+
+function openAuthModal(mode = "signin") {
+  const modal = document.querySelector("#auth-modal");
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  setAuthMode(mode);
+}
+
+function closeAuthModal() {
+  const modal = document.querySelector("#auth-modal");
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+  document.querySelector("#auth-error").hidden = true;
+  document.querySelector("#auth-form").reset();
+}
+
+function setAuthMode(mode) {
+  const isSignup = mode === "signup";
+  document.querySelector("#auth-modal-title").textContent = isSignup ? "Create account" : "Sign in";
+  document.querySelector("#auth-submit").textContent = isSignup ? "Create account" : "Sign in";
+  document.querySelectorAll("[data-auth-tab]").forEach((tab) => {
+    tab.classList.toggle("selected", tab.dataset.authTab === mode);
+  });
+  document.querySelectorAll("[data-auth-only]").forEach((field) => {
+    field.hidden = field.dataset.authOnly !== mode;
+  });
+  document.querySelector("#auth-form").dataset.mode = mode;
+}
+
+async function submitAuth(form) {
+  const mode = form.dataset.mode || "signin";
+  const fd = new FormData(form);
+  const payload = Object.fromEntries(fd);
+  const errorEl = document.querySelector("#auth-error");
+  errorEl.hidden = true;
+  try {
+    const endpoint = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+    const data = await api(endpoint, { method: "POST", body: JSON.stringify(payload) });
+    session.user = data.user;
+    session.organizations = data.organizations || [];
+    if (data.activeOrganization) state.activeOrgSlug = data.activeOrganization.slug;
+    saveState();
+    closeAuthModal();
+    audit(`Signed in as ${session.user.email}`);
+    renderAll();
+    showToast(`Welcome, ${session.user.name || session.user.email}.`);
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.hidden = false;
+  }
+}
+
+async function signOut() {
+  try {
+    await api("/api/auth/logout", { method: "POST" });
+  } catch {
+    /* ignore */
+  }
+  session.user = null;
+  session.organizations = [];
+  state.activeOrgSlug = null;
+  saveState();
+  audit("Signed out");
+  renderAll();
+  showToast("Signed out.");
+}
+
+async function createOrganization() {
+  const name = window.prompt("Name for the new organization");
+  if (!name) return;
+  try {
+    const data = await api("/api/orgs", { method: "POST", body: JSON.stringify({ name }) });
+    session.organizations = [...session.organizations, data.organization];
+    state.activeOrgSlug = data.organization.slug;
+    saveState();
+    audit(`Created organization ${data.organization.name}`);
+    renderAll();
+    showToast(`Organization ${data.organization.name} created.`);
+  } catch (error) {
+    showToast(error.message);
+  }
 }
 
 async function connectSource(name) {
@@ -274,6 +422,7 @@ async function runScan() {
       body: JSON.stringify({ sourceUrl, scanDepth, tier: state.tier, connectors: state.connectors })
     });
     window.clearInterval(timer);
+    document.body.classList.remove("scan-active");
     state.activeReport = report;
     audit(`Scan completed for ${report.sourceUrl}`);
     saveState();
@@ -281,6 +430,7 @@ async function runScan() {
     showToast("Report ready. Review and approve repairs.");
   } catch (error) {
     window.clearInterval(timer);
+    document.body.classList.remove("scan-active");
     const findings = fallbackFindings;
     state.activeReport = {
       id: crypto.randomUUID(),
@@ -370,10 +520,19 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
 
+  const control = target.closest("button, a");
+  if (control instanceof HTMLElement) fireControl(control);
+
   const jumpTarget = target.dataset.jump;
   if (jumpTarget) {
     document.querySelector(jumpTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+
+  if (target.dataset.authOpen) openAuthModal(target.dataset.authOpen);
+  if (target.dataset.authTab) setAuthMode(target.dataset.authTab);
+  if (target.id === "auth-close") closeAuthModal();
+  if (target.id === "sign-out-button") signOut();
+  if (target.id === "new-org-button") createOrganization();
 
   if (target.id === "run-scan") runScan();
   if (target.id === "export-report") exportReport();
@@ -401,9 +560,38 @@ document.addEventListener("click", (event) => {
   }
 });
 
+function syncActiveNavigation() {
+  const sections = ["overview", "connectors", "scan", "repairs", "billing"]
+    .map((id) => document.getElementById(id))
+    .filter(Boolean);
+  const active = [...sections].reverse().find((section) => section.getBoundingClientRect().top <= 160);
+  if (!active) return;
+  navTargets.forEach((link) => {
+    link.classList.toggle("active", link.getAttribute("href") === `#${active.id}`);
+  });
+}
+
+window.addEventListener("scroll", syncActiveNavigation, { passive: true });
+
 document.querySelector("#scan-form").addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!session.user) {
+    openAuthModal("signin");
+    showToast("Sign in to start a scan.");
+    return;
+  }
   runScan();
+});
+
+document.querySelector("#auth-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitAuth(event.currentTarget);
+});
+
+document.querySelector("#org-switcher").addEventListener("change", (event) => {
+  state.activeOrgSlug = event.target.value;
+  saveState();
+  audit(`Active org switched to ${state.activeOrgSlug}`);
 });
 
 document.querySelector("#select-all").addEventListener("change", (event) => {
@@ -427,3 +615,5 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 }
 
 renderAll();
+syncActiveNavigation();
+refreshSession();

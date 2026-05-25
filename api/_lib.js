@@ -45,6 +45,28 @@ export function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+export async function resolveOrgContext(req) {
+  const { currentUserContext } = await import("./_auth.js");
+  const context = await currentUserContext(req);
+  if (!context) return { authenticated: false };
+
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const requested =
+    req.headers["x-codecanic-org"] ||
+    url.searchParams.get("organization") ||
+    null;
+
+  let organization = null;
+  if (requested) {
+    organization =
+      context.organizations.find(
+        (org) => org.slug === requested || org.id === requested
+      ) || null;
+  }
+  if (!organization) organization = context.organizations[0] || null;
+  return { authenticated: true, ...context, organization };
+}
+
 export function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
