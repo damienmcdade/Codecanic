@@ -1,4 +1,5 @@
 import { buildFindings, json, planFor, readBody, summarize } from "./_lib.js";
+import { randomUUID } from "node:crypto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -12,7 +13,7 @@ export default async function handler(req, res) {
     const plan = planFor(tier);
     const findings = buildFindings(body);
     const job = {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       status: "report_ready",
       tier,
       queue: plan.label,

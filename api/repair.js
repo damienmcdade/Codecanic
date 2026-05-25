@@ -1,4 +1,5 @@
 import { json, planFor, readBody } from "./_lib.js";
+import { randomUUID } from "node:crypto";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,7 +17,7 @@ export default async function handler(req, res) {
 
     const plan = planFor(body.tier || "Free");
     json(res, 200, {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       status: "queued",
       findingIds,
       branchName: `codecanic/repair-${Date.now()}`,

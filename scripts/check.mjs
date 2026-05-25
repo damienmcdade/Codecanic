@@ -9,11 +9,13 @@ const requiredFiles = [
   "vercel.json",
   "railway.json",
   "README.md",
+  "server.js",
   "api/_lib.js",
   "api/scan.js",
   "api/repair.js",
   "api/checkout.js",
   "api/connectors.js",
+  "api/health.js",
   ".env.example"
 ];
 

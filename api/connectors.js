@@ -1,4 +1,5 @@
 import { getConnector, json } from "./_lib.js";
+import { randomUUID } from "node:crypto";
 
 export default function handler(req, res) {
   if (req.method !== "GET") {
@@ -35,7 +36,7 @@ export default function handler(req, res) {
   if (name !== "Railway" && name !== "Xcode") {
     authUrl.searchParams.set("client_id", process.env[connector.env]);
     authUrl.searchParams.set("redirect_uri", redirectUri);
-    authUrl.searchParams.set("state", crypto.randomUUID());
+    authUrl.searchParams.set("state", randomUUID());
     if (connector.scopes) authUrl.searchParams.set("scope", connector.scopes);
     if (name === "GitLab") authUrl.searchParams.set("response_type", "code");
   }

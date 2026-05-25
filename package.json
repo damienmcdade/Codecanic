@@ -6,8 +6,8 @@
   "description": "Codecanic MVP: scan infrastructure, review reports, and approve code repairs.",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "start": "npx serve .",
-    "dev": "npx serve .",
+    "start": "node server.js",
+    "dev": "node server.js",
     "check": "node scripts/check.mjs"
   },
   "keywords": [

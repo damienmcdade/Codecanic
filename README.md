@@ -32,6 +32,7 @@ npm run dev
 ## Operating Endpoints
 
 - `GET /api/connectors?name=GitHub` returns connector authorization status and an OAuth URL when the matching environment variable is configured.
+- `GET /api/health` returns deployment identity for Vercel/Railway sync checks.
 - `POST /api/scan` creates a scan job and returns a prioritized report with findings and summary counts.
 - `POST /api/repair` queues approved findings for patch generation and pull request preparation.
 - `POST /api/checkout` creates a Stripe subscription checkout session when Stripe environment variables are present.

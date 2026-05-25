@@ -1,0 +1,18 @@
+{
+  "app": "Codecanic",
+  "production": {
+    "vercel": {
+      "project": "codecanic",
+      "projectId": "prj_MbiBX1YOFMIF9XBgNl5QQMeOauDp",
+      "url": "https://codecanic-pv4d3rk5o-damienmcdade17-2595s-projects.vercel.app",
+      "note": "Vercel SSO protection is enabled; use authenticated Vercel access or a custom public domain."
+    },
+    "railway": {
+      "project": "Codecanic",
+      "projectId": "ac08d7cd-62cf-457a-a20b-b499ad5989b3",
+      "service": "Codecanic",
+      "serviceId": "9da7651a-6f5b-4f86-8d11-3bcbab22fc87",
+      "url": "https://codecanic-production.up.railway.app"
+    }
+  }
+}
