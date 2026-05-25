@@ -81,6 +81,8 @@ export function clearSessionCookie() {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
+const MAX_SESSIONS_PER_USER = 5;
+
 export async function createSession(userId) {
   const sessionId = randomUUID();
   const session = {
@@ -89,10 +91,13 @@ export async function createSession(userId) {
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + SESSION_DAYS * 86400_000).toISOString()
   };
-  await write(async (state) => ({
-    ...state,
-    sessions: [session, ...state.sessions.filter((existing) => existing.userId !== userId).slice(0, 24)]
-  }));
+  await write(async (state) => {
+    const now = Date.now();
+    const active = state.sessions.filter((s) => new Date(s.expiresAt).getTime() > now);
+    const mine = active.filter((s) => s.userId === userId).slice(0, MAX_SESSIONS_PER_USER - 1);
+    const others = active.filter((s) => s.userId !== userId);
+    return { ...state, sessions: [session, ...mine, ...others] };
+  });
   return signSessionToken(sessionId);
 }
 

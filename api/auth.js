@@ -16,9 +16,45 @@ import {
 } from "./_auth.js";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
+const loginAttempts = new Map();
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function clientKey(req, email) {
+  const fwd = req.headers["x-forwarded-for"] || "";
+  const ip = String(fwd).split(",")[0].trim() || req.socket?.remoteAddress || "unknown";
+  return `${ip}|${email}`;
+}
+
+function checkLoginLockout(key) {
+  const entry = loginAttempts.get(key);
+  if (!entry) return null;
+  const now = Date.now();
+  if (entry.lockUntil && entry.lockUntil > now) {
+    return { retryAfterMs: entry.lockUntil - now };
+  }
+  if (entry.lockUntil && entry.lockUntil <= now) {
+    loginAttempts.delete(key);
+  }
+  return null;
+}
+
+function recordLoginFailure(key) {
+  const now = Date.now();
+  const entry = loginAttempts.get(key) || { count: 0, lockUntil: 0 };
+  entry.count += 1;
+  if (entry.count >= LOGIN_MAX_ATTEMPTS) {
+    entry.lockUntil = now + LOGIN_LOCKOUT_MS;
+  }
+  loginAttempts.set(key, entry);
+}
+
+function clearLoginFailures(key) {
+  loginAttempts.delete(key);
 }
 
 async function uniqueSlug(state, base) {
@@ -90,14 +126,25 @@ async function login(req, res) {
   const body = await readBody(req);
   const email = normalizeEmail(body.email);
   const password = String(body.password || "");
+  const key = clientKey(req, email);
+
+  const lockout = checkLoginLockout(key);
+  if (lockout) {
+    const retryAfter = Math.ceil(lockout.retryAfterMs / 1000);
+    res.setHeader("Retry-After", String(retryAfter));
+    json(res, 429, { error: `Too many failed attempts. Try again in ${retryAfter}s.` });
+    return;
+  }
 
   const state = await read();
   const user = state.users.find((entry) => entry.email === email);
   const ok = user ? await verifyPassword(password, user.passwordHash) : false;
   if (!user || !ok) {
+    recordLoginFailure(key);
     json(res, 401, { error: "Email or password is incorrect." });
     return;
   }
+  clearLoginFailures(key);
 
   const memberships = state.memberships.filter((m) => m.userId === user.id);
   const organizations = memberships

@@ -99,6 +99,15 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.remove("visible"), 2800);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function fireControl(control) {
   control.classList.remove("is-firing");
   void control.offsetWidth;
@@ -146,14 +155,14 @@ function renderConnectors() {
       return `
         <div class="connector">
           <div class="connector-info">
-            <span class="connector-icon" aria-hidden="true">${connector.icon}</span>
+            <span class="connector-icon" aria-hidden="true">${escapeHtml(connector.icon)}</span>
             <span>
-              <strong>${connector.name}</strong>
-              <span>${connector.detail}</span>
+              <strong>${escapeHtml(connector.name)}</strong>
+              <span>${escapeHtml(connector.detail)}</span>
             </span>
           </div>
-          <button class="secondary ${className}" type="button" data-connect="${connector.name}">
-            ${status}
+          <button class="secondary ${className}" type="button" data-connect="${escapeHtml(connector.name)}">
+            ${escapeHtml(status)}
           </button>
         </div>
       `;
@@ -191,27 +200,29 @@ function renderFindings() {
   );
 
   findingsRoot.innerHTML = visible
-    .map(
-      (finding) => `
-        <article class="finding" data-finding="${finding.id}">
-          <label class="checkbox-row" aria-label="Select ${finding.title}">
-            <input type="checkbox" data-repair="${finding.id}" />
+    .map((finding) => {
+      const id = escapeHtml(finding.id);
+      const title = escapeHtml(finding.title);
+      return `
+        <article class="finding" data-finding="${id}">
+          <label class="checkbox-row" aria-label="Select ${title}">
+            <input type="checkbox" data-repair="${id}" />
           </label>
           <div>
-            <h3>${finding.title}</h3>
-            <p>${finding.fix}</p>
+            <h3>${title}</h3>
+            <p>${escapeHtml(finding.fix)}</p>
             <div class="finding-meta">
-              <span class="severity">${finding.severity}</span>
-              <span>${finding.type}</span>
-              <span>${finding.confidence || 70}% confidence</span>
-              <span>${finding.target}</span>
+              <span class="severity">${escapeHtml(finding.severity)}</span>
+              <span>${escapeHtml(finding.type)}</span>
+              <span>${escapeHtml(finding.confidence ?? 70)}% confidence</span>
+              <span>${escapeHtml(finding.target)}</span>
             </div>
-            <code>${finding.patchPreview || "Patch preview will appear after scan."}</code>
+            <code>${escapeHtml(finding.patchPreview || "Patch preview will appear after scan.")}</code>
           </div>
-          <button class="secondary" type="button" data-single="${finding.id}">Approve</button>
+          <button class="secondary" type="button" data-single="${id}">Approve</button>
         </article>
-      `
-    )
+      `;
+    })
     .join("");
 }
 
@@ -246,8 +257,8 @@ function renderJobs() {
         .map(
           (job) => `
             <article class="job">
-              <strong>${job.branchName}</strong>
-              <span>${job.findingIds.length} repairs · ${job.status} · ${job.workerCount} workers</span>
+              <strong>${escapeHtml(job.branchName)}</strong>
+              <span>${escapeHtml(job.findingIds.length)} repairs · ${escapeHtml(job.status)} · ${escapeHtml(job.workerCount)} workers</span>
             </article>
           `
         )
@@ -256,7 +267,7 @@ function renderJobs() {
 }
 
 function renderAudit() {
-  auditList.innerHTML = state.audit.map((item) => `<p>${item}</p>`).join("");
+  auditList.innerHTML = state.audit.map((item) => `<p>${escapeHtml(item)}</p>`).join("");
 }
 
 function renderSummary() {
@@ -295,7 +306,7 @@ function renderAccount() {
     const select = card.querySelector("#org-switcher");
     const current = activeOrg();
     select.innerHTML = session.organizations
-      .map((org) => `<option value="${org.slug}">${org.name}</option>`)
+      .map((org) => `<option value="${escapeHtml(org.slug)}">${escapeHtml(org.name)}</option>`)
       .join("");
     if (current) select.value = current.slug;
   } else {
