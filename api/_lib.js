@@ -1,6 +1,6 @@
 const plans = {
-  Free: { queueDelayMs: 1400, workers: 3, label: "Standard queue", adSupported: true },
-  Pro: { queueDelayMs: 500, workers: 8, label: "Priority queue", adSupported: false }
+  Free: { queueDelayMs: 200, workers: 24, label: "Priority queue", adSupported: true },
+  Pro: { queueDelayMs: 200, workers: 24, label: "Priority queue", adSupported: false }
 };
 
 const connectorConfig = {

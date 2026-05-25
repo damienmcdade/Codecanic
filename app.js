@@ -19,10 +19,10 @@ const plans = [
     name: "Free",
     price: "$0",
     period: "forever",
-    speed: "Standard queue",
-    workers: "3 workers",
+    speed: "Priority queue",
+    workers: "24 workers",
     adSupported: true,
-    bullets: ["Full infrastructure scans", "All connectors", "Sponsored slots in dashboard"],
+    bullets: ["Same priority speed as Pro", "Full scans + all connectors", "Sponsored slots in dashboard"],
     cta: "Start free"
   },
   {
@@ -30,9 +30,9 @@ const plans = [
     price: "$20",
     period: "/mo",
     speed: "Priority queue",
-    workers: "8 workers",
+    workers: "24 workers",
     adSupported: false,
-    bullets: ["No ads, anywhere", "Priority scan workers", "Cancel anytime"],
+    bullets: ["No ads, anywhere", "Same priority speed as Free", "Cancel anytime"],
     cta: "Go ad-free",
     featured: true
   }
