@@ -15,10 +15,27 @@ const scanSteps = [
 ];
 
 const plans = [
-  { name: "Free", price: "$0", speed: "Slowest queue", workers: "1 worker", cta: "Start free" },
-  { name: "Basic", price: "$19", speed: "Medium queue", workers: "3 workers", cta: "Choose Basic" },
-  { name: "Pro", price: "$59", speed: "Faster queue", workers: "8 workers", cta: "Choose Pro", featured: true },
-  { name: "Max", price: "$149", speed: "Fastest available", workers: "Priority worker pool", cta: "Choose Max" }
+  {
+    name: "Free",
+    price: "$0",
+    period: "forever",
+    speed: "Standard queue",
+    workers: "3 workers",
+    adSupported: true,
+    bullets: ["Full infrastructure scans", "All connectors", "Sponsored slots in dashboard"],
+    cta: "Start free"
+  },
+  {
+    name: "Pro",
+    price: "$20",
+    period: "/mo",
+    speed: "Priority queue",
+    workers: "8 workers",
+    adSupported: false,
+    bullets: ["No ads, anywhere", "Priority scan workers", "Cancel anytime"],
+    cta: "Go ad-free",
+    featured: true
+  }
 ];
 
 const fallbackFindings = [
@@ -35,7 +52,7 @@ const fallbackFindings = [
 ];
 
 const defaultState = {
-  tier: "Pro",
+  tier: "Free",
   connectors: {},
   activeReport: null,
   repairJobs: [],
@@ -200,19 +217,25 @@ function renderFindings() {
 
 function renderPricing() {
   pricingGrid.innerHTML = plans
-    .map(
-      (plan) => `
-        <article class="price-card ${plan.featured ? "featured" : ""}">
-          <h3>${plan.name}</h3>
-          <div class="price">${plan.price}<small>/mo</small></div>
-          <p>${plan.speed}</p>
-          <p>${plan.workers}</p>
-          <button class="${state.tier === plan.name ? "primary" : "secondary"}" type="button" data-plan="${plan.name}">
-            ${state.tier === plan.name ? "Active" : plan.cta}
+    .map((plan) => {
+      const active = state.tier === plan.name;
+      const bullets = (plan.bullets || []).map((b) => `<li>${b}</li>`).join("");
+      const badge = plan.adSupported ? "Ad-supported" : "Ad-free";
+      return `
+        <article class="price-card ${plan.featured ? "featured" : ""} ${active ? "is-active" : ""}">
+          <header>
+            <h3>${plan.name}</h3>
+            <span class="plan-badge">${badge}</span>
+          </header>
+          <div class="price">${plan.price}<small>${plan.period || ""}</small></div>
+          <p class="plan-speed">${plan.speed} · ${plan.workers}</p>
+          <ul class="plan-bullets">${bullets}</ul>
+          <button class="${active ? "primary" : plan.featured ? "primary" : "secondary"}" type="button" data-plan="${plan.name}">
+            ${active ? "Current plan" : plan.cta}
           </button>
         </article>
-      `
-    )
+      `;
+    })
     .join("");
 }
 
@@ -245,6 +268,18 @@ function renderSummary() {
   const plan = planByName(state.tier);
   document.querySelector("#current-tier").textContent = plan.name;
   document.querySelector("#tier-speed").textContent = `${plan.speed}, ${plan.workers}`;
+  const tierBadge = document.querySelector("#tier-badge");
+  if (tierBadge) tierBadge.textContent = plan.adSupported ? "Ad-supported" : "Ad-free";
+  applyAdState();
+}
+
+function applyAdState() {
+  const plan = planByName(state.tier);
+  const showAds = plan.adSupported !== false;
+  document.body.classList.toggle("ads-on", showAds);
+  document.body.classList.toggle("ads-off", !showAds);
+  const removeBtn = document.querySelector("#remove-ads-button");
+  if (removeBtn) removeBtn.hidden = !showAds;
 }
 
 function renderAccount() {
@@ -536,6 +571,7 @@ document.addEventListener("click", (event) => {
 
   if (target.id === "run-scan") runScan();
   if (target.id === "export-report") exportReport();
+  if (target.id === "remove-ads-button") choosePlan("Pro");
   if (target.dataset.connect) connectSource(target.dataset.connect);
   if (target.dataset.single) approveRepairs([target.dataset.single]);
   if (target.dataset.plan) choosePlan(target.dataset.plan);

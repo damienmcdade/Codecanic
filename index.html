@@ -33,9 +33,10 @@
           <a href="#billing">Billing</a>
         </nav>
         <div class="tier-card">
-          <span class="label">Current tier</span>
-          <strong id="current-tier">Pro</strong>
-          <span id="tier-speed">Faster queue, 8 workers</span>
+          <span class="label">Current plan</span>
+          <strong id="current-tier">Free</strong>
+          <span id="tier-speed">Standard queue, 3 workers</span>
+          <span class="plan-badge" id="tier-badge">Ad-supported</span>
         </div>
         <div class="account-card" id="account-card">
           <div class="account-signed-out" hidden>
@@ -67,10 +68,20 @@
             <h1>Scan, report, and repair code across your stack.</h1>
           </div>
           <div class="topbar-actions">
+            <button class="ghost" type="button" id="remove-ads-button" hidden>Remove ads · $20/mo</button>
             <button class="ghost" type="button" id="export-report">Export report</button>
             <button class="primary" type="button" id="run-scan">Run full scan</button>
           </div>
         </header>
+
+        <aside class="ad-slot ad-slot-banner" data-ad-slot="banner" aria-label="Sponsored message">
+          <span class="ad-label">Sponsored</span>
+          <div class="ad-body">
+            <strong>Your code is being scanned for free.</strong>
+            <span>Codecanic stays free thanks to sponsor messages. Pro removes ads for $20/mo.</span>
+          </div>
+          <button class="secondary" type="button" data-plan="Pro">Go ad-free</button>
+        </aside>
 
         <section class="hero-panel" id="overview" aria-label="Codecanic overview">
           <div class="hero-copy">
@@ -83,7 +94,7 @@
             </p>
             <div class="hero-actions">
               <button class="primary" type="button" data-jump="#connectors">Connect sources</button>
-              <button class="secondary" type="button" data-jump="#billing">View plans</button>
+              <button class="secondary" type="button" data-jump="#billing">Free or $20 ad-free</button>
             </div>
           </div>
           <div class="garage-visual" aria-label="Cyber garage diagnostics bay">
@@ -193,6 +204,11 @@
             </label>
             <button class="secondary" type="button" id="approve-selected">Approve selected</button>
           </div>
+          <aside class="ad-slot ad-slot-inline" data-ad-slot="findings" aria-label="Sponsored message">
+            <span class="ad-label">Sponsored</span>
+            <span class="ad-body">Pro hides this slot and bumps your scans to a priority queue. $20/mo, cancel anytime.</span>
+            <button class="ghost" type="button" data-plan="Pro">Upgrade</button>
+          </aside>
           <div class="findings" id="findings"></div>
         </section>
 
@@ -225,12 +241,16 @@
         <section class="panel" id="billing">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Subscriptions</p>
-              <h2>Tiered repair speed</h2>
+              <p class="eyebrow">Plans</p>
+              <h2>Free with ads, or $20 ad-free</h2>
             </div>
-            <span class="pill">Stripe-ready checkout</span>
+            <span class="pill">Cancel anytime</span>
           </div>
-          <div class="pricing-grid" id="pricing-grid"></div>
+          <p class="billing-lede">
+            Codecanic is free forever, supported by sponsor slots in the dashboard.
+            Switch to Pro to remove every ad and move to the priority scan queue.
+          </p>
+          <div class="pricing-grid pricing-grid-two" id="pricing-grid"></div>
         </section>
 
         <section class="panel deploy-panel" id="deployment">

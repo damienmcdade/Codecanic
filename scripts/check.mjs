@@ -32,7 +32,7 @@ for (const file of requiredFiles) {
 }
 
 const html = await readFile("index.html", "utf8");
-for (const marker of ["Codecanic", "Connectors", "Findings report", "Tiered repair speed"]) {
+for (const marker of ["Codecanic", "Connectors", "Findings report", "Free with ads, or $20 ad-free"]) {
   if (!html.includes(marker)) {
     throw new Error(`Missing expected UI marker: ${marker}`);
   }
@@ -123,7 +123,7 @@ resetCache();
 const scan = await authedInvoke(scanHandler, "POST", {
   sourceUrl: "https://github.com/damienmcdade/Codecanic",
   scanDepth: "full",
-  tier: "Max"
+  tier: "Pro"
 }, "/api/scan");
 
 if (!scan.data?.findings?.length || scan.data.summary.critical < 1) {
@@ -132,7 +132,7 @@ if (!scan.data?.findings?.length || scan.data.summary.critical < 1) {
 
 const repair = await authedInvoke(repairHandler, "POST", {
   findingIds: [scan.data.findings[0].id],
-  tier: "Max",
+  tier: "Pro",
   reportId: scan.data.id
 }, "/api/repair");
 

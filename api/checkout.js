@@ -2,9 +2,7 @@ import { json, readBody, resolveOrgContext } from "./_lib.js";
 import { write } from "./_data.js";
 
 const priceEnv = {
-  Basic: "STRIPE_BASIC_PRICE_ID",
-  Pro: "STRIPE_PRO_PRICE_ID",
-  Max: "STRIPE_MAX_PRICE_ID"
+  Pro: "STRIPE_PRO_PRICE_ID"
 };
 
 export default async function handler(req, res) {
@@ -26,6 +24,10 @@ export default async function handler(req, res) {
 
     const body = await readBody(req);
     const plan = body.plan;
+    if (plan !== "Free" && plan !== "Pro") {
+      json(res, 400, { error: "Unknown plan. Choose Free or Pro." });
+      return;
+    }
     if (plan === "Free") {
       await write(async (state) => ({
         ...state,
