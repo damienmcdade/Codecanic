@@ -101,6 +101,27 @@
               </div>
               <span class="pill" id="scan-state">Ready</span>
             </div>
+            <form class="scan-form" id="scan-form">
+              <label>
+                <span>Primary repository or project URL</span>
+                <input
+                  id="source-url"
+                  name="sourceUrl"
+                  type="url"
+                  placeholder="https://github.com/company/repository"
+                  autocomplete="url"
+                />
+              </label>
+              <label>
+                <span>Scan depth</span>
+                <select id="scan-depth" name="scanDepth">
+                  <option value="full">Full infrastructure scan</option>
+                  <option value="security">Security only</option>
+                  <option value="quality">Quality and tests</option>
+                  <option value="performance">Performance and deployment</option>
+                </select>
+              </label>
+            </form>
             <div class="scan-timeline" id="scan-timeline"></div>
           </article>
         </section>
@@ -126,6 +147,32 @@
             <button class="secondary" type="button" id="approve-selected">Approve selected</button>
           </div>
           <div class="findings" id="findings"></div>
+        </section>
+
+        <section class="section-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Repair jobs</p>
+                <h2>Approved queue</h2>
+              </div>
+              <span class="pill" id="queue-count">0 queued</span>
+            </div>
+            <div class="job-list" id="job-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Audit trail</p>
+                <h2>Workspace activity</h2>
+              </div>
+              <button class="icon-button" type="button" id="clear-audit" aria-label="Clear audit trail">
+                ×
+              </button>
+            </div>
+            <div class="audit-list" id="audit-list"></div>
+          </article>
         </section>
 
         <section class="panel" id="billing">

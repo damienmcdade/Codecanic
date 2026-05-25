@@ -10,6 +10,7 @@ Codecanic is an MVP for a subscription code operations platform that scans user 
 - Selective repair approval for all findings or focused segments such as security and performance.
 - Tiered subscription model: Free, Basic, Pro, and Max with progressively faster scan and repair queues.
 - PWA-ready web interface that can be wrapped for iOS and Android distribution.
+- Deployable API endpoints for connector authorization handoff, scan reports, repair queues, and Stripe checkout sessions.
 
 ## Product Architecture
 
@@ -27,6 +28,15 @@ The production version should separate the interface from trusted backend worker
 ```bash
 npm run dev
 ```
+
+## Operating Endpoints
+
+- `GET /api/connectors?name=GitHub` returns connector authorization status and an OAuth URL when the matching environment variable is configured.
+- `POST /api/scan` creates a scan job and returns a prioritized report with findings and summary counts.
+- `POST /api/repair` queues approved findings for patch generation and pull request preparation.
+- `POST /api/checkout` creates a Stripe subscription checkout session when Stripe environment variables are present.
+
+Copy `.env.example` into your deployment environment and fill in the provider credentials owned by your company.
 
 ## Deployment Targets
 

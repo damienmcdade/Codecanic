@@ -35,7 +35,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -324,7 +325,9 @@ button {
 .connector-list,
 .scan-timeline,
 .findings,
-.pricing-grid {
+.pricing-grid,
+.job-list,
+.audit-list {
   display: grid;
   gap: 12px;
   margin-top: 20px;
@@ -333,7 +336,8 @@ button {
 .connector,
 .timeline-step,
 .finding,
-.price-card {
+.price-card,
+.job {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfdff;
@@ -377,8 +381,39 @@ button {
 .connector span,
 .timeline-step span,
 .finding p,
-.price-card p {
+.price-card p,
+.job span,
+.empty-state {
   color: var(--muted);
+}
+
+.scan-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.scan-form label {
+  display: grid;
+  gap: 7px;
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.scan-form input,
+.scan-form select {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: white;
+  color: var(--ink);
 }
 
 .segmented {
@@ -431,6 +466,19 @@ button {
   margin: 0;
 }
 
+.finding code {
+  display: block;
+  margin-top: 10px;
+  width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  padding: 10px;
+  background: #eef2f7;
+  color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
 .finding-meta {
   display: flex;
   flex-wrap: wrap;
@@ -473,6 +521,33 @@ button {
 .price-card h3,
 .price-card p {
   margin: 0;
+}
+
+.job {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+}
+
+.job strong,
+.job span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.audit-list {
+  max-height: 310px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.audit-list p,
+.empty-state {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdff;
 }
 
 .price {
