@@ -18,30 +18,6 @@ const scanSteps = [
   ["Repair", "Prepare patches for user-approved segments and rerun validation."]
 ];
 
-const plans = [
-  {
-    name: "Free",
-    price: "$0",
-    period: "forever",
-    speed: "Priority queue",
-    workers: "24 workers",
-    adSupported: true,
-    bullets: ["Same priority speed as Pro", "Full scans + all connectors", "Sponsored slots in dashboard"],
-    cta: "Start free"
-  },
-  {
-    name: "Pro",
-    price: "$20",
-    period: "/mo",
-    speed: "Priority queue",
-    workers: "24 workers",
-    adSupported: false,
-    bullets: ["No ads, anywhere", "Same priority speed as Free", "Cancel anytime"],
-    cta: "Go ad-free",
-    featured: true
-  }
-];
-
 const fallbackFindings = [
   {
     id: "demo-secret-env",
@@ -56,7 +32,6 @@ const fallbackFindings = [
 ];
 
 const defaultState = {
-  tier: "Free",
   connectors: {},
   activeReport: null,
   repairJobs: [],
@@ -71,7 +46,6 @@ const session = { user: null, organizations: [] };
 const connectorList = document.querySelector("#connector-list");
 const scanTimeline = document.querySelector("#scan-timeline");
 const findingsRoot = document.querySelector("#findings");
-const pricingGrid = document.querySelector("#pricing-grid");
 const scanState = document.querySelector("#scan-state");
 const toast = document.querySelector("#toast");
 const jobList = document.querySelector("#job-list");
@@ -140,10 +114,6 @@ async function api(path, options = {}) {
     throw err;
   }
   return data;
-}
-
-function planByName(name) {
-  return plans.find((plan) => plan.name === name) || plans[0];
 }
 
 function currentFindings() {
@@ -245,30 +215,6 @@ function renderFindings() {
     .join("");
 }
 
-function renderPricing() {
-  pricingGrid.innerHTML = plans
-    .map((plan) => {
-      const active = state.tier === plan.name;
-      const bullets = (plan.bullets || []).map((b) => `<li>${b}</li>`).join("");
-      const badge = plan.adSupported ? "Ad-supported" : "Ad-free";
-      return `
-        <article class="price-card ${plan.featured ? "featured" : ""} ${active ? "is-active" : ""}">
-          <header>
-            <h3>${plan.name}</h3>
-            <span class="plan-badge">${badge}</span>
-          </header>
-          <div class="price">${plan.price}<small>${plan.period || ""}</small></div>
-          <p class="plan-speed">${plan.speed} · ${plan.workers}</p>
-          <ul class="plan-bullets">${bullets}</ul>
-          <button class="${active ? "primary" : plan.featured ? "primary" : "secondary"}" type="button" data-plan="${plan.name}">
-            ${active ? "Current plan" : plan.cta}
-          </button>
-        </article>
-      `;
-    })
-    .join("");
-}
-
 function renderJobs() {
   queueCount.textContent = `${state.repairJobs.length} queued`;
   jobList.innerHTML = state.repairJobs.length
@@ -295,21 +241,6 @@ function renderSummary() {
   document.querySelector("#warning-count").textContent = summary.warnings;
   document.querySelector("#autofix-count").textContent = summary.autofixable;
   scanState.textContent = state.activeReport ? "Report ready" : "Ready";
-  const plan = planByName(state.tier);
-  document.querySelector("#current-tier").textContent = plan.name;
-  document.querySelector("#tier-speed").textContent = `${plan.speed}, ${plan.workers}`;
-  const tierBadge = document.querySelector("#tier-badge");
-  if (tierBadge) tierBadge.textContent = plan.adSupported ? "Ad-supported" : "Ad-free";
-  applyAdState();
-}
-
-function applyAdState() {
-  const plan = planByName(state.tier);
-  const showAds = plan.adSupported !== false;
-  document.body.classList.toggle("ads-on", showAds);
-  document.body.classList.toggle("ads-off", !showAds);
-  const removeBtn = document.querySelector("#remove-ads-button");
-  if (removeBtn) removeBtn.hidden = !showAds;
 }
 
 function renderAccount() {
@@ -339,7 +270,6 @@ function renderAll() {
   renderConnectors();
   renderTimeline();
   renderFindings();
-  renderPricing();
   renderJobs();
   renderAudit();
   renderSummary();
@@ -453,10 +383,12 @@ const legalText = {
       <li>Signed session cookie (<code>codecanic_session</code>) that identifies your browser session. Sent on requests to Codecanic only.</li>
       <li>Server logs (IP address, request path, timestamps) retained for up to 30 days for security and abuse prevention.</li>
     </ul>
+    <h4>Advertising</h4>
+    <p>Codecanic is free for everyone. To keep the lights on we display ads served by Google AdSense (publisher ID <code>ca-pub-8731629548430880</code>). Google may set cookies, read approximate location and device information, and use this data to serve and measure personalised or non-personalised ads. Manage your ad choices at <a href="https://adssettings.google.com" target="_blank" rel="noopener">adssettings.google.com</a>. EEA / UK / Swiss users see a Google-provided consent prompt before any non-essential cookie is set.</p>
     <h4>What we do NOT do</h4>
     <ul>
       <li>We do not sell your data.</li>
-      <li>We do not run third-party advertising or analytics trackers in this dashboard.</li>
+      <li>We do not pass your connected provider tokens, repository content, or scan results to Google or any other ad partner.</li>
       <li>We do not access provider data outside what is necessary to fulfil a scan or repair you requested.</li>
     </ul>
     <h4>Your rights (GDPR / CCPA / equivalent)</h4>
@@ -486,12 +418,12 @@ const legalText = {
     </ul>
     <h4>Repairs and pull requests</h4>
     <p>Codecanic proposes repairs but never merges them. You approve the segments you want before any change is queued. You are responsible for reviewing the code Codecanic suggests before merging it into production.</p>
-    <h4>Billing</h4>
-    <p>Free tier is supported by sponsor slots. Paid plans bill through Stripe. Cancel anytime; access continues to the end of the current billing period.</p>
+    <h4>Cost</h4>
+    <p>Codecanic is free for everyone. The service is supported by ads shown via Google AdSense. There are no paid plans, no card on file, and no subscription to cancel.</p>
     <h4>Termination</h4>
     <p>You can delete your account at any time. We may suspend accounts that violate these terms or applicable law.</p>
     <h4>Warranty + liability</h4>
-    <p>Codecanic is provided "as is" without warranties. To the extent permitted by law, Codecanic's total liability is limited to the fees you paid in the 12 months preceding the claim. Codecanic is not liable for indirect or consequential damages.</p>
+    <p>Codecanic is provided free of charge and "as is" without warranties. To the extent permitted by law, Codecanic's total liability for any claim is limited to USD 100. Codecanic is not liable for indirect or consequential damages.</p>
     <h4>Governing law</h4>
     <p>These terms are governed by the laws applicable to where Codecanic is incorporated. Disputes will be resolved in the courts of that jurisdiction.</p>
     <h4>Changes</h4>
@@ -1163,7 +1095,7 @@ async function runScan() {
   try {
     const report = await api("/api/scan", {
       method: "POST",
-      body: JSON.stringify({ sourceUrl, scanDepth, tier: state.tier, connectors: state.connectors })
+      body: JSON.stringify({ sourceUrl, scanDepth, connectors: state.connectors })
     });
     window.clearInterval(timer);
     document.body.classList.remove("scan-active");
@@ -1190,7 +1122,7 @@ async function approveRepairs(findingIds) {
   try {
     const job = await api("/api/repair", {
       method: "POST",
-      body: JSON.stringify({ findingIds, tier: state.tier, reportId: state.activeReport?.id })
+      body: JSON.stringify({ findingIds, reportId: state.activeReport?.id })
     });
     state.repairJobs = [job, ...state.repairJobs];
     audit(`${findingIds.length} repairs approved`);
@@ -1200,73 +1132,6 @@ async function approveRepairs(findingIds) {
   } catch (error) {
     showToast(error.message);
   }
-}
-
-async function choosePlan(planName) {
-  if (planName === "Free") {
-    state.tier = planName;
-    audit("Free plan activated");
-    saveState();
-    renderAll();
-    showToast("Free plan activated.");
-    return;
-  }
-
-  if (!session.user) {
-    openAuthModal("signup");
-    showToast("Create an account to go ad-free.");
-    return;
-  }
-
-  let checkout;
-  try {
-    checkout = await api("/api/checkout", {
-      method: "POST",
-      body: JSON.stringify({ plan: planName })
-    });
-  } catch (error) {
-    showToast(error.message || "Checkout could not start.");
-    return;
-  }
-
-  if (checkout.url) {
-    window.location.href = checkout.url;
-    return;
-  }
-
-  if (checkout.status === "configuration_required") {
-    openBillingNotice(checkout);
-    audit(`${planName} checkout unavailable: Stripe not configured`);
-    return;
-  }
-
-  showToast(checkout.message || `${planName} selected.`);
-}
-
-function openBillingNotice(checkout) {
-  const modal = document.querySelector("#billing-notice");
-  if (!modal) {
-    showToast(checkout.message || "Subscription billing isn't enabled yet.");
-    return;
-  }
-  document.querySelector("#billing-notice-message").textContent =
-    "Pro subscription billing isn't live yet on this Codecanic deployment. Your account remains on Free — no charges, no plan change.";
-  const list = document.querySelector("#billing-notice-envs");
-  const envs = checkout.requiredEnv || [];
-  list.innerHTML = envs.length
-    ? `<p class="muted">For the Codecanic admin: set these environment variables on the API service, then redeploy.</p><pre class="connect-snippet">${envs
-        .map((k) => `${k}=...`)
-        .join("\n")}</pre>`
-    : "";
-  modal.hidden = false;
-  modal.setAttribute("aria-hidden", "false");
-}
-
-function closeBillingNotice() {
-  const modal = document.querySelector("#billing-notice");
-  if (!modal) return;
-  modal.hidden = true;
-  modal.setAttribute("aria-hidden", "true");
 }
 
 function exportReport() {
@@ -1311,11 +1176,9 @@ document.addEventListener("click", (event) => {
   if (target.id === "legal-close") closeLegalModal();
   if (target.id === "download-data") downloadMyData();
   if (target.id === "cookie-acknowledge") ackCookieBanner();
-  if (target.id === "billing-notice-close" || target.id === "billing-notice-ack") closeBillingNotice();
 
   if (target.id === "run-scan") runScan();
   if (target.id === "export-report") exportReport();
-  if (target.id === "remove-ads-button") choosePlan("Pro");
   if (target.dataset.connect) {
     if (!session.user) {
       openAuthModal("signin");
@@ -1346,7 +1209,6 @@ document.addEventListener("click", (event) => {
     if (switchTo && switchTo !== wizard.provider) openConnectionWizard(switchTo);
   }
   if (target.dataset.single) approveRepairs([target.dataset.single]);
-  if (target.dataset.plan) choosePlan(target.dataset.plan);
 
   if (target.id === "approve-selected") {
     const ids = [...document.querySelectorAll("[data-repair]:checked")].map((item) => item.dataset.repair);
@@ -1369,7 +1231,7 @@ document.addEventListener("click", (event) => {
 });
 
 function syncActiveNavigation() {
-  const sections = ["overview", "connectors", "scan", "repairs", "billing"]
+  const sections = ["overview", "connectors", "scan", "repairs"]
     .map((id) => document.getElementById(id))
     .filter(Boolean);
   const active = [...sections].reverse().find((section) => section.getBoundingClientRect().top <= 160);
@@ -1413,14 +1275,6 @@ document.querySelector("#select-all").addEventListener("change", (event) => {
     checkbox.checked = event.target.checked;
   });
 });
-
-const checkoutParams = new URLSearchParams(window.location.search);
-if (checkoutParams.get("checkout") === "success" && checkoutParams.get("plan")) {
-  state.tier = checkoutParams.get("plan");
-  audit(`${state.tier} checkout completed`);
-  saveState();
-  history.replaceState(null, "", window.location.pathname);
-}
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => {

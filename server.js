@@ -4,7 +4,6 @@ import { stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { randomBytes } from "node:crypto";
 import auth from "./api/auth.js";
-import checkout from "./api/checkout.js";
 import connectors from "./api/connectors.js";
 import health from "./api/health.js";
 import oauth from "./api/oauth.js";
@@ -16,7 +15,6 @@ const port = Number(process.env.PORT || 3000);
 const publicDir = join(process.cwd(), "public");
 
 const exactRoutes = new Map([
-  ["/api/checkout", checkout],
   ["/api/connectors", connectors],
   ["/api/health", health],
   ["/api/orgs", orgs],
@@ -85,14 +83,24 @@ const baseSecurityHeaders = {
   "Cross-Origin-Resource-Policy": "same-origin"
 };
 
+const AD_SCRIPT_HOSTS =
+  "https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://googleads.g.doubleclick.net https://ep1.adtrafficquality.google https://ep2.adtrafficquality.google https://www.googletagservices.com";
+const AD_FRAME_HOSTS =
+  "https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://ep1.adtrafficquality.google https://ep2.adtrafficquality.google";
+const AD_IMG_HOSTS =
+  "https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://*.gstatic.com https://*.googleusercontent.com";
+const AD_CONNECT_HOSTS =
+  "https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://ep1.adtrafficquality.google https://ep2.adtrafficquality.google https://csi.gstatic.com";
+
 function buildCsp(nonce) {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}'`,
+    `script-src 'self' 'nonce-${nonce}' ${AD_SCRIPT_HOSTS}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
-    "connect-src 'self'",
+    `img-src 'self' data: ${AD_IMG_HOSTS}`,
+    `connect-src 'self' ${AD_CONNECT_HOSTS}`,
     "font-src 'self'",
+    `frame-src ${AD_FRAME_HOSTS}`,
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",

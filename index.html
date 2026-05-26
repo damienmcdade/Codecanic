@@ -11,6 +11,8 @@
     />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./styles.css" />
+    <meta name="google-adsense-account" content="ca-pub-8731629548430880" />
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8731629548430880" crossorigin="anonymous"></script>
   </head>
   <body>
     <div class="shell">
@@ -30,13 +32,12 @@
           <a href="#connectors">Connectors</a>
           <a href="#scan">Scan</a>
           <a href="#repairs">Repairs</a>
-          <a href="#billing">Billing</a>
         </nav>
         <div class="tier-card">
-          <span class="label">Current plan</span>
-          <strong id="current-tier">Free</strong>
-          <span id="tier-speed">Priority queue, 24 workers</span>
-          <span class="plan-badge" id="tier-badge">Ad-supported</span>
+          <span class="label">Plan</span>
+          <strong>Free for everyone</strong>
+          <span>Priority queue, 24 workers</span>
+          <span class="plan-badge">Sponsor-supported</span>
         </div>
         <div class="account-card" id="account-card">
           <div class="account-signed-out" hidden>
@@ -74,7 +75,6 @@
             <h1>Scan, report, and repair code across your stack.</h1>
           </div>
           <div class="topbar-actions">
-            <button class="ghost" type="button" id="remove-ads-button" hidden>Remove ads · $20/mo</button>
             <button class="ghost" type="button" id="export-report">Export report</button>
             <button class="primary" type="button" id="run-scan">Run full scan</button>
           </div>
@@ -83,10 +83,9 @@
         <aside class="ad-slot ad-slot-banner" data-ad-slot="banner" aria-label="Sponsored message">
           <span class="ad-label">Sponsored</span>
           <div class="ad-body">
-            <strong>Your code is being scanned for free.</strong>
-            <span>Codecanic stays free thanks to sponsor messages. Pro removes ads for $20/mo.</span>
+            <strong>Codecanic is free for everyone.</strong>
+            <span>Sponsor messages keep the lights on so every team gets the same priority scan and repair queue.</span>
           </div>
-          <button class="secondary" type="button" data-plan="Pro">Go ad-free</button>
         </aside>
 
         <section class="hero-panel" id="overview" aria-label="Codecanic overview">
@@ -100,7 +99,7 @@
             </p>
             <div class="hero-actions">
               <button class="primary" type="button" data-jump="#connectors">Connect sources</button>
-              <button class="secondary" type="button" data-jump="#billing">Free or $20 ad-free</button>
+              <button class="secondary" type="button" data-jump="#scan">Run a scan</button>
             </div>
           </div>
           <div class="garage-visual" aria-label="Cyber garage diagnostics bay">
@@ -138,10 +137,6 @@
           <a href="#repairs">
             <span>03</span>
             Repair lift
-          </a>
-          <a href="#billing">
-            <span>04</span>
-            Boost lane
           </a>
         </section>
 
@@ -213,8 +208,7 @@
           </div>
           <aside class="ad-slot ad-slot-inline" data-ad-slot="findings" aria-label="Sponsored message">
             <span class="ad-label">Sponsored</span>
-            <span class="ad-body">Pro hides this slot and bumps your scans to a priority queue. $20/mo, cancel anytime.</span>
-            <button class="ghost" type="button" data-plan="Pro">Upgrade</button>
+            <span class="ad-body">Sponsor message — Codecanic stays free for every team. Want to sponsor? Email <a href="mailto:sponsors@codecanic.app">sponsors@codecanic.app</a>.</span>
           </aside>
           <div class="findings" id="findings"></div>
         </section>
@@ -245,21 +239,6 @@
           </article>
         </section>
 
-        <section class="panel" id="billing">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Plans</p>
-              <h2>Free with ads, or $20 ad-free</h2>
-            </div>
-            <span class="pill">Cancel anytime</span>
-          </div>
-          <p class="billing-lede">
-            Same priority scan speed on every plan — Codecanic always runs at full throttle.
-            Free is supported by sponsor slots; $20/mo Pro removes every ad.
-          </p>
-          <div class="pricing-grid pricing-grid-two" id="pricing-grid"></div>
-        </section>
-
         <section class="panel deploy-panel" id="deployment">
           <div>
             <p class="eyebrow">Launch path</p>
@@ -267,7 +246,7 @@
             <p>
               This MVP ships as a PWA for the web. The same product surface can be wrapped with
               Capacitor for App Store and Google Play releases, while backend workers handle
-              connector authorization, scans, repair jobs, billing, and audit logs.
+              connector authorization, scans, repair jobs, and audit logs.
             </p>
           </div>
           <div class="deploy-tags">
@@ -275,7 +254,6 @@
             <span>Vercel Project</span>
             <span>Railway Workers</span>
             <span>Xcode Projects</span>
-            <span>Stripe Billing</span>
           </div>
         </section>
       </main>
@@ -283,20 +261,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <div class="auth-modal billing-notice-modal" id="billing-notice" hidden aria-hidden="true">
-      <div class="auth-modal-card billing-notice-card" role="dialog" aria-labelledby="billing-notice-title">
-        <header>
-          <h2 id="billing-notice-title">Subscription billing not enabled</h2>
-          <button class="icon-button" type="button" id="billing-notice-close" aria-label="Close">×</button>
-        </header>
-        <p id="billing-notice-message" class="muted"></p>
-        <div id="billing-notice-envs"></div>
-        <p class="muted">If you want Pro early, email <a href="mailto:billing@codecanic.app">billing@codecanic.app</a>.</p>
-        <button class="primary" type="button" id="billing-notice-ack">Got it</button>
-      </div>
-    </div>
-
-    <div class="auth-modal legal-modal" id="legal-modal" hidden aria-hidden="true">
+<div class="auth-modal legal-modal" id="legal-modal" hidden aria-hidden="true">
       <div class="auth-modal-card legal-card" role="dialog" aria-labelledby="legal-modal-title">
         <header>
           <h2 id="legal-modal-title">Privacy Policy</h2>
@@ -316,8 +281,7 @@
 
     <div class="cookie-banner" id="cookie-banner" hidden>
       <span>
-        Codecanic stores a signed session cookie when you sign in (required), and uses localStorage to remember your dashboard layout.
-        We do not run third-party analytics or advertising trackers.
+        Codecanic uses a signed session cookie when you sign in (required), localStorage for your dashboard layout, and Google AdSense to display sponsor ads (which may set its own cookies for ad delivery and measurement).
       </span>
       <button class="primary" type="button" id="cookie-acknowledge">Got it</button>
       <button type="button" class="link-button" data-open-legal="privacy">Privacy Policy</button>
