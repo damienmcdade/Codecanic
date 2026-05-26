@@ -110,6 +110,7 @@ const projectEndpoints = {
       query: "{ projects { edges { node { id name description } } } }"
     }),
     auth: (token) => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }),
+    okCheck: (body) => Array.isArray(body?.data?.projects?.edges) && !(body?.errors && body.errors.length),
     map: (body) =>
       (body?.data?.projects?.edges || []).map(({ node }) => ({
         id: node.id,
@@ -322,11 +323,16 @@ async function handleProjects(req, res, url) {
     } catch {
       body = null;
     }
-    if (!response.ok) {
+    const okBody = endpoint.okCheck ? endpoint.okCheck(body) : true;
+    if (!response.ok || !okBody) {
       json(res, 200, {
         provider: name,
         projects: [],
-        error: body?.message || body?.error_description || `Provider returned ${response.status}.`
+        error:
+          body?.errors?.[0]?.message ||
+          body?.message ||
+          body?.error_description ||
+          `Provider returned ${response.status}.`
       });
       return;
     }
@@ -346,7 +352,8 @@ async function handleStart(req, res, url) {
   }
 
   const guide = providerGuides[name];
-  const configured = Boolean(process.env[connector.env]);
+  const isManual = guide?.type === "manual";
+  const configured = isManual ? true : Boolean(process.env[connector.env]);
   const clientSecretEnv = connector.env.replace(/_CLIENT_ID$/, "_CLIENT_SECRET");
   const protocol = req.headers["x-forwarded-proto"] || (url.protocol === "https:" ? "https" : "http");
   const host = req.headers.host || "codecanic.local";
@@ -465,7 +472,9 @@ async function handleList(req, res) {
 
   const list = Object.keys(providerGuides).map((name) => {
     const connector = getConnector(name);
-    const configured = Boolean(connector && process.env[connector.env]);
+    const guide = providerGuides[name];
+    const isManual = guide?.type === "manual";
+    const configured = isManual ? true : Boolean(connector && process.env[connector.env]);
     const connection = connections.find((entry) => entry.provider === name) || null;
     return describeStatus({ name, configured, connection });
   });
