@@ -1,7 +1,9 @@
 import { createHmac, randomUUID } from "node:crypto";
-import { getConnector, json } from "./_lib.js";
+import { getConnector, json, readBody } from "./_lib.js";
 import { read, write } from "./_data.js";
 import { currentUserContext } from "./_auth.js";
+
+const manualProviders = new Set(["Railway", "Xcode"]);
 
 const tokenExchange = {
   GitHub: {
@@ -162,13 +164,30 @@ async function exchangeCode(provider, code, req) {
   };
 }
 
-function renderHtml(title, message) {
+function renderHtml(title, message, { provider = null, success = false } = {}) {
+  const payload = JSON.stringify({
+    type: "codecanic:connector",
+    provider,
+    success,
+    message
+  }).replace(/</g, "\\u003c");
   return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>
 <body style="font-family:system-ui;padding:32px;background:#0a1019;color:#f8fafc;">
-<h1 style="color:#14b8a6;">${title}</h1>
+<h1 style="color:${success ? "#14b8a6" : "#f87171"};">${title}</h1>
 <p>${message}</p>
 <p><a href="/" style="color:#2dd4bf;">Return to Codecanic</a></p>
-<script>setTimeout(function(){window.location.href="/?connected=1";},1500);</script>
+<script>
+(function(){
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(${payload}, window.location.origin);
+      setTimeout(function(){ window.close(); }, 600);
+      return;
+    }
+  } catch (err) {}
+  setTimeout(function(){ window.location.href = "/?connected=" + ${success ? '"1"' : '"0"'}; }, 1500);
+})();
+</script>
 </body></html>`;
 }
 
@@ -185,16 +204,24 @@ async function callback(req, res) {
   const error = url.searchParams.get("error_description") || url.searchParams.get("error");
 
   if (error) {
-    sendHtml(res, 400, renderHtml("Authorization cancelled", error));
+    sendHtml(res, 400, renderHtml("Authorization cancelled", error, { provider, success: false }));
     return;
   }
   if (!provider || !code || !stateToken) {
-    sendHtml(res, 400, renderHtml("Missing parameters", "Provider, code, and state are required."));
+    sendHtml(
+      res,
+      400,
+      renderHtml("Missing parameters", "Provider, code, and state are required.", { provider, success: false })
+    );
     return;
   }
   const payload = verifyState(stateToken);
   if (!payload || payload.provider !== provider) {
-    sendHtml(res, 400, renderHtml("State validation failed", "OAuth state is invalid or expired."));
+    sendHtml(
+      res,
+      400,
+      renderHtml("State validation failed", "OAuth state is invalid or expired.", { provider, success: false })
+    );
     return;
   }
 
@@ -206,7 +233,14 @@ async function callback(req, res) {
       (m) => m.userId === payload.userId && m.organizationId === payload.organizationId
     );
     if (!orgValid) {
-      sendHtml(res, 403, renderHtml("Access denied", "You no longer have access to that organization."));
+      sendHtml(
+        res,
+        403,
+        renderHtml("Access denied", "You no longer have access to that organization.", {
+          provider,
+          success: false
+        })
+      );
       return;
     }
 
@@ -231,10 +265,113 @@ async function callback(req, res) {
       ]
     }));
 
-    sendHtml(res, 200, renderHtml(`${provider} connected`, "Authorization complete. Returning to your dashboard…"));
+    sendHtml(
+      res,
+      200,
+      renderHtml(`${provider} connected`, "Authorization complete. You can close this window.", {
+        provider,
+        success: true
+      })
+    );
   } catch (err) {
-    sendHtml(res, 502, renderHtml("Authorization failed", err.message));
+    sendHtml(res, 502, renderHtml("Authorization failed", err.message, { provider, success: false }));
   }
+}
+
+async function manual(req, res) {
+  const context = await currentUserContext(req);
+  if (!context) {
+    json(res, 401, { error: "Sign in to connect providers." });
+    return;
+  }
+  const body = await readBody(req);
+  const provider = typeof body.provider === "string" ? body.provider : "";
+  const token = typeof body.token === "string" ? body.token.trim() : "";
+  const connector = getConnector(provider);
+  if (!connector || !manualProviders.has(provider)) {
+    json(res, 400, { error: "Provider does not support manual token connection." });
+    return;
+  }
+  if (!token) {
+    json(res, 422, { error: "Paste a token to continue." });
+    return;
+  }
+  if (provider === "Xcode" && !/^[A-Z0-9]{10}$/i.test(token)) {
+    json(res, 422, { error: "Apple Team ID must be 10 alphanumeric characters." });
+    return;
+  }
+  if (provider === "Railway" && token.length < 16) {
+    json(res, 422, { error: "Railway token looks too short. Generate a token at railway.app/account/tokens." });
+    return;
+  }
+  const requestedOrg = req.headers["x-codecanic-org"] || null;
+  const organization = requestedOrg
+    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
+    : context.organizations[0];
+  if (!organization) {
+    json(res, 400, { error: "Select an organization before connecting providers." });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  await write(async (state) => ({
+    ...state,
+    connectorCreds: [
+      {
+        id: randomUUID(),
+        provider,
+        organizationId: organization.id,
+        userId: context.user.id,
+        accessToken: token,
+        refreshToken: null,
+        tokenType: "manual",
+        scope: null,
+        expiresIn: null,
+        updatedAt: now
+      },
+      ...state.connectorCreds.filter(
+        (entry) => !(entry.provider === provider && entry.organizationId === organization.id)
+      )
+    ]
+  }));
+
+  json(res, 200, {
+    provider,
+    status: "connected",
+    connectedAt: now,
+    message: `${provider} connected for ${organization.name}.`
+  });
+}
+
+async function disconnect(req, res) {
+  const context = await currentUserContext(req);
+  if (!context) {
+    json(res, 401, { error: "Sign in required." });
+    return;
+  }
+  const body = await readBody(req);
+  const provider = typeof body.provider === "string" ? body.provider : "";
+  if (!provider) {
+    json(res, 400, { error: "Provider is required." });
+    return;
+  }
+  const requestedOrg = req.headers["x-codecanic-org"] || null;
+  const organization = requestedOrg
+    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
+    : context.organizations[0];
+  if (!organization) {
+    json(res, 400, { error: "Select an organization first." });
+    return;
+  }
+
+  await write(async (state) => ({
+    ...state,
+    connectorCreds: state.connectorCreds.filter(
+      (entry) => !(entry.provider === provider && entry.organizationId === organization.id)
+    )
+  }));
+
+  json(res, 200, { provider, status: "disconnected" });
 }
 
 async function status(req, res) {
@@ -266,6 +403,8 @@ export default async function handler(req, res) {
     if (action === "start" && req.method === "POST") return await start(req, res);
     if (action === "callback" && req.method === "GET") return await callback(req, res);
     if (action === "status" && req.method === "GET") return await status(req, res);
+    if (action === "manual" && req.method === "POST") return await manual(req, res);
+    if (action === "disconnect" && req.method === "POST") return await disconnect(req, res);
     json(res, 404, { error: "Unknown oauth action" });
   } catch (error) {
     json(res, 400, { error: error.message });

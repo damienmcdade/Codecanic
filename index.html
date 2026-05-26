@@ -146,7 +146,14 @@
                 <p class="eyebrow">Source connections</p>
                 <h2>Connect existing platforms</h2>
               </div>
-              <button class="icon-button" type="button" aria-label="Refresh connectors">↻</button>
+              <button class="icon-button" type="button" id="refresh-connectors" aria-label="Refresh connectors">↻</button>
+            </div>
+            <div class="quickconnect-banner" id="quickconnect-banner">
+              <div>
+                <strong>QuickConnect</strong>
+                <span>Sign into your GitHub, GitLab, Bitbucket, or Vercel account, authorize Codecanic, and pick a project to scan — all from this window.</span>
+              </div>
+              <button class="primary" type="button" id="quickconnect">QuickConnect</button>
             </div>
             <div class="connector-list" id="connector-list"></div>
           </article>
@@ -275,6 +282,83 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="auth-modal connect-modal" id="connect-modal" hidden aria-hidden="true">
+      <div class="auth-modal-card connect-card" role="dialog" aria-labelledby="connect-modal-title">
+        <header>
+          <div class="connect-title">
+            <span class="connector-icon" id="connect-icon" aria-hidden="true">GH</span>
+            <div>
+              <h2 id="connect-modal-title">Connect GitHub</h2>
+              <span class="muted" id="connect-subtitle">3-step guided setup</span>
+            </div>
+          </div>
+          <button class="icon-button" type="button" id="connect-close" aria-label="Close">×</button>
+        </header>
+
+        <ol class="connect-stepper" id="connect-stepper" aria-label="Connection progress">
+          <li data-step="preflight" class="active"><span>1</span> Check setup</li>
+          <li data-step="authorize"><span>2</span> Authorize</li>
+          <li data-step="verify"><span>3</span> Confirm</li>
+        </ol>
+
+        <p class="connect-summary" id="connect-summary"></p>
+
+        <ul class="preflight" id="connect-preflight" aria-label="Pre-flight checks"></ul>
+
+        <section class="connect-admin" id="connect-admin" hidden>
+          <h3>Codecanic admin: finish provider setup</h3>
+          <p class="muted" id="connect-admin-intro"></p>
+          <ol id="connect-admin-steps"></ol>
+          <pre class="connect-snippet" id="connect-admin-snippet"></pre>
+        </section>
+
+        <section class="connect-manual" id="connect-manual" hidden>
+          <h3 id="connect-manual-title">Paste your token</h3>
+          <ol class="connect-manual-steps" id="connect-manual-steps"></ol>
+          <label class="connect-manual-field">
+            <span>Token</span>
+            <input id="connect-manual-input" type="text" autocomplete="off" spellcheck="false" />
+          </label>
+          <button class="primary" type="button" id="connect-manual-submit">Save token</button>
+          <a class="connect-manual-link" id="connect-manual-link" href="#" target="_blank" rel="noopener noreferrer">
+            Open provider token page →
+          </a>
+        </section>
+
+        <section class="connect-oauth" id="connect-oauth" hidden>
+          <h3>Authorize on the provider</h3>
+          <p class="muted">A new window will open. After you approve access there, this card will update automatically.</p>
+          <button class="primary connect-oauth-button" type="button" id="connect-oauth-start">
+            Authorize with <span id="connect-oauth-name">GitHub</span>
+          </button>
+          <p class="connect-oauth-progress" id="connect-oauth-progress" hidden>
+            <span class="spinner" aria-hidden="true"></span>
+            Waiting for the provider window…
+            <button class="ghost" type="button" id="connect-oauth-cancel">Cancel</button>
+          </p>
+        </section>
+
+        <section class="connect-confirm" id="connect-confirm" hidden>
+          <div class="connect-confirm-banner">
+            <strong id="connect-confirm-title">Connected</strong>
+            <span id="connect-confirm-detail" class="muted"></span>
+          </div>
+          <div class="connect-actions">
+            <button class="secondary" type="button" id="connect-verify">Test connection</button>
+            <button class="ghost" type="button" id="connect-disconnect">Disconnect</button>
+          </div>
+          <p class="connect-verify-result" id="connect-verify-result" hidden></p>
+          <div class="connect-projects" id="connect-projects" hidden>
+            <h3>Pick a project to scan</h3>
+            <p class="muted">Codecanic will preload this URL into the scan form. You can switch projects anytime.</p>
+            <div class="project-picker" id="project-picker"></div>
+          </div>
+        </section>
+
+        <p class="auth-error" id="connect-error" hidden></p>
+      </div>
+    </div>
 
     <div class="auth-modal" id="auth-modal" hidden aria-hidden="true">
       <div class="auth-modal-card" role="dialog" aria-labelledby="auth-modal-title">

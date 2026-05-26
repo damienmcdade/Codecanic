@@ -1,11 +1,15 @@
 const connectors = [
-  { name: "GitHub", detail: "Repos, pull requests, dependency graph", status: "Disconnected", icon: "GH" },
-  { name: "Vercel", detail: "Deployments, env vars, runtime logs", status: "Disconnected", icon: "▲" },
-  { name: "Railway", detail: "Services, workers, databases, logs", status: "Disconnected", icon: "RW" },
-  { name: "Xcode", detail: "iOS projects, signing, build settings", status: "Disconnected", icon: "XC" },
-  { name: "GitLab", detail: "Repositories, CI pipelines, issues", status: "Disconnected", icon: "GL" },
-  { name: "Bitbucket", detail: "Repositories, workspaces, pull requests", status: "Disconnected", icon: "BB" }
+  { name: "GitHub", detail: "Repos, pull requests, dependency graph", status: "Disconnected", icon: "GH", type: "oauth" },
+  { name: "Vercel", detail: "Deployments, env vars, runtime logs", status: "Disconnected", icon: "▲", type: "oauth" },
+  { name: "Railway", detail: "Services, workers, databases, logs", status: "Disconnected", icon: "RW", type: "manual" },
+  { name: "Xcode", detail: "iOS projects, signing, build settings", status: "Disconnected", icon: "XC", type: "manual" },
+  { name: "GitLab", detail: "Repositories, CI pipelines, issues", status: "Disconnected", icon: "GL", type: "oauth" },
+  { name: "Bitbucket", detail: "Repositories, workspaces, pull requests", status: "Disconnected", icon: "BB", type: "oauth" }
 ];
+
+function connectorMeta(name) {
+  return connectors.find((c) => c.name === name) || null;
+}
 
 const scanSteps = [
   ["Discover", "Map repositories, services, build systems, and package managers."],
@@ -149,20 +153,35 @@ function currentFindings() {
 function renderConnectors() {
   connectorList.innerHTML = connectors
     .map((connector) => {
-      const live = state.connectors[connector.name];
-      const status = live?.status || connector.status;
-      const className = status === "Connected" ? "connected" : "";
+      const live = state.connectors[connector.name] || {};
+      const isConnected = live.status === "connected";
+      const isReady = live.status === "ready" || live.status === "authorization_ready";
+      const needsConfig = live.status === "configuration_required";
+      const buttonLabel = isConnected
+        ? "Manage"
+        : needsConfig
+        ? "Needs setup"
+        : isReady
+        ? "Connect"
+        : "Connect";
+      const statusLine = isConnected
+        ? `Connected${live.connectedAt ? ` · ${new Date(live.connectedAt).toLocaleDateString()}` : ""}`
+        : needsConfig
+        ? "Admin setup required"
+        : "Not connected";
+      const statusClass = isConnected ? "is-connected" : needsConfig ? "is-warn" : "is-idle";
       return `
-        <div class="connector">
+        <div class="connector ${statusClass}">
           <div class="connector-info">
             <span class="connector-icon" aria-hidden="true">${escapeHtml(connector.icon)}</span>
             <span>
               <strong>${escapeHtml(connector.name)}</strong>
               <span>${escapeHtml(connector.detail)}</span>
+              <span class="connector-status">${escapeHtml(statusLine)}</span>
             </span>
           </div>
-          <button class="secondary ${className}" type="button" data-connect="${escapeHtml(connector.name)}">
-            ${escapeHtml(status)}
+          <button class="secondary ${isConnected ? "connected" : ""}" type="button" data-connect="${escapeHtml(connector.name)}">
+            ${escapeHtml(buttonLabel)}
           </button>
         </div>
       `;
@@ -343,6 +362,7 @@ async function refreshSession() {
     session.organizations = [];
   }
   renderAccount();
+  await loadAllConnectorStatuses();
 }
 
 function openAuthModal(mode = "signin") {
@@ -427,27 +447,443 @@ async function createOrganization() {
   }
 }
 
-async function connectSource(name) {
+const wizard = {
+  provider: null,
+  pollTimer: null,
+  popup: null,
+  popupTimer: null,
+  detail: null
+};
+
+const wizardEl = () => document.querySelector("#connect-modal");
+
+function setWizardStep(step) {
+  document.querySelectorAll("#connect-stepper li").forEach((li) => {
+    const order = ["preflight", "authorize", "verify"];
+    const idx = order.indexOf(li.dataset.step);
+    const cur = order.indexOf(step);
+    li.classList.toggle("active", idx === cur);
+    li.classList.toggle("complete", idx < cur);
+  });
+}
+
+function showWizardError(message) {
+  const el = document.querySelector("#connect-error");
+  if (!message) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = message;
+}
+
+function openConnectionWizard(name) {
+  const meta = connectorMeta(name);
+  if (!meta) return;
+  wizard.provider = name;
+  wizard.detail = null;
+  showWizardError("");
+  document.querySelector("#connect-icon").textContent = meta.icon;
+  document.querySelector("#connect-modal-title").textContent = `Connect ${name}`;
+  document.querySelector("#connect-subtitle").textContent =
+    meta.type === "manual" ? "Paste-token setup, 3 steps" : "Guided OAuth setup, 3 steps";
+  document.querySelector("#connect-oauth-name").textContent = name;
+  document.querySelector("#connect-manual-title").textContent = `Paste your ${name} token`;
+  ["connect-admin", "connect-manual", "connect-oauth", "connect-confirm"].forEach((id) => {
+    document.querySelector(`#${id}`).hidden = true;
+  });
+  document.querySelector("#connect-verify-result").hidden = true;
+  document.querySelector("#connect-oauth-progress").hidden = true;
+  const modal = wizardEl();
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  setWizardStep("preflight");
+  loadWizardDetail();
+}
+
+function closeConnectionWizard() {
+  const modal = wizardEl();
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+  stopOAuthPolling();
+  wizard.provider = null;
+}
+
+function renderPreflight(detail) {
+  const meta = connectorMeta(wizard.provider);
+  const org = activeOrg();
+  const items = [
+    {
+      ok: Boolean(session.user),
+      label: session.user ? `Signed in as ${session.user.email}` : "Sign in to Codecanic",
+      action: session.user
+        ? null
+        : { label: "Sign in", run: () => { closeConnectionWizard(); openAuthModal("signin"); } }
+    },
+    {
+      ok: Boolean(org),
+      label: org ? `Workspace: ${org.name}` : "Choose a workspace",
+      action: org ? null : { label: "Create workspace", run: () => createOrganization() }
+    },
+    {
+      ok: detail.configured,
+      label: detail.configured
+        ? `${wizard.provider} is configured on Codecanic`
+        : `${wizard.provider} needs admin setup`,
+      action: null
+    }
+  ];
+
+  if (meta.type === "oauth") {
+    items.push({
+      ok: true,
+      label: "Browser allows pop-ups for this site",
+      hint: "If a window doesn't open in step 2, allow pop-ups for this site and retry."
+    });
+  }
+
+  const list = document.querySelector("#connect-preflight");
+  list.innerHTML = items
+    .map((item, idx) => {
+      const icon = item.ok ? "✓" : "!";
+      const cls = item.ok ? "ok" : "todo";
+      const hint = item.hint ? `<small>${escapeHtml(item.hint)}</small>` : "";
+      const button = item.action
+        ? `<button class="ghost" type="button" data-preflight="${idx}">${escapeHtml(item.action.label)}</button>`
+        : "";
+      return `<li class="${cls}"><span class="preflight-mark">${icon}</span><span>${escapeHtml(item.label)}${hint}</span>${button}</li>`;
+    })
+    .join("");
+  list.querySelectorAll("[data-preflight]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.preflight);
+      items[idx]?.action?.run?.();
+    });
+  });
+
+  return items.every((item) => item.ok);
+}
+
+function renderAdminBlock(detail) {
+  const admin = document.querySelector("#connect-admin");
+  if (detail.status !== "configuration_required") {
+    admin.hidden = true;
+    return;
+  }
+  admin.hidden = false;
+  document.querySelector("#connect-admin-intro").textContent =
+    detail.message || `${wizard.provider} requires environment variables before users can connect.`;
+  document.querySelector("#connect-admin-steps").innerHTML = (detail.adminInstructions || [])
+    .map((step) => `<li>${escapeHtml(step)}</li>`)
+    .join("");
+  const lines = [];
+  if (detail.requiredEnv) lines.push(`${detail.requiredEnv}=...`);
+  if (detail.requiredSecretEnv) lines.push(`${detail.requiredSecretEnv}=...`);
+  if (detail.redirectUri) lines.push(`# Redirect URL: ${detail.redirectUri}`);
+  document.querySelector("#connect-admin-snippet").textContent = lines.join("\n");
+}
+
+function renderManualBlock(detail) {
+  const block = document.querySelector("#connect-manual");
+  if (detail.type !== "manual" || detail.status === "connected") {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  const steps = detail.tokenInstructions || [];
+  document.querySelector("#connect-manual-steps").innerHTML = steps
+    .map((step) => `<li>${escapeHtml(step)}</li>`)
+    .join("");
+  const link = document.querySelector("#connect-manual-link");
+  if (detail.tokenUrl) {
+    link.href = detail.tokenUrl;
+    link.hidden = false;
+    link.textContent = `Open ${wizard.provider} token page →`;
+  } else {
+    link.hidden = true;
+  }
+  document.querySelector("#connect-manual-input").value = "";
+  document.querySelector("#connect-manual-input").placeholder =
+    wizard.provider === "Xcode" ? "10-character Team ID" : "Paste personal access token";
+}
+
+function renderOAuthBlock(detail) {
+  const block = document.querySelector("#connect-oauth");
+  if (detail.type !== "oauth" || detail.status === "connected" || detail.status === "configuration_required") {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  document.querySelector("#connect-oauth-progress").hidden = true;
+  const button = document.querySelector("#connect-oauth-start");
+  button.disabled = !detail.authUrl;
+}
+
+function renderConfirmBlock(detail) {
+  const block = document.querySelector("#connect-confirm");
+  const projects = document.querySelector("#connect-projects");
+  if (detail.status !== "connected") {
+    block.hidden = true;
+    if (projects) projects.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  document.querySelector("#connect-confirm-title").textContent = `${wizard.provider} connected`;
+  const when = detail.connectedAt ? `Linked ${new Date(detail.connectedAt).toLocaleString()}` : "Token saved";
+  document.querySelector("#connect-confirm-detail").textContent = when;
+  document.querySelector("#connect-verify-result").hidden = true;
+  loadProjects();
+}
+
+async function loadWizardDetail() {
+  const name = wizard.provider;
+  if (!name) return;
+  showWizardError("");
   try {
-    const result = await api(`/api/connectors?name=${encodeURIComponent(name)}`);
-    if (result.authUrl) {
-      state.connectors[name] = { status: "Authorization ready", authUrl: result.authUrl };
-      window.open(result.authUrl, "_blank", "noopener,noreferrer");
-      audit(`${name} authorization opened`);
-      showToast(`${name} authorization opened.`);
+    const detail = await api(`/api/connectors?name=${encodeURIComponent(name)}`);
+    wizard.detail = detail;
+    state.connectors[name] = {
+      status: detail.status,
+      type: detail.type,
+      connectedAt: detail.connectedAt || null
+    };
+    saveState();
+    renderConnectors();
+    const ready = renderPreflight(detail);
+    renderAdminBlock(detail);
+    renderManualBlock(detail);
+    renderOAuthBlock(detail);
+    renderConfirmBlock(detail);
+    if (detail.status === "connected") {
+      setWizardStep("verify");
+    } else if (ready && detail.configured) {
+      setWizardStep("authorize");
     } else {
-      state.connectors[name] = { status: "Needs config", requiredEnv: result.requiredEnv };
-      audit(`${name} needs ${result.requiredEnv}`);
-      showToast(result.message);
+      setWizardStep("preflight");
     }
   } catch (error) {
-    state.connectors[name] = { status: "Demo connected" };
-    audit(`${name} connected in demo mode`);
-    showToast(`${name} connected in demo mode.`);
+    showWizardError(error.message || "Could not load connector status.");
   }
-  saveState();
-  renderConnectors();
 }
+
+function stopOAuthPolling() {
+  if (wizard.pollTimer) {
+    window.clearInterval(wizard.pollTimer);
+    wizard.pollTimer = null;
+  }
+  if (wizard.popupTimer) {
+    window.clearInterval(wizard.popupTimer);
+    wizard.popupTimer = null;
+  }
+  if (wizard.popup && !wizard.popup.closed) {
+    try { wizard.popup.close(); } catch {}
+  }
+  wizard.popup = null;
+  document.querySelector("#connect-oauth-progress").hidden = true;
+}
+
+function startOAuthFlow() {
+  const detail = wizard.detail;
+  if (!detail || !detail.authUrl) {
+    showWizardError("Authorization URL is not ready yet.");
+    return;
+  }
+  const popup = window.open(detail.authUrl, "codecanic-oauth", "width=600,height=720,noopener=no");
+  if (!popup) {
+    showWizardError("Browser blocked the authorization window. Allow pop-ups for this site and try again.");
+    return;
+  }
+  wizard.popup = popup;
+  document.querySelector("#connect-oauth-progress").hidden = false;
+  audit(`${wizard.provider} authorization opened`);
+
+  wizard.pollTimer = window.setInterval(async () => {
+    try {
+      const data = await api("/api/oauth/status");
+      const conn = (data.connections || []).find((c) => c.provider === wizard.provider);
+      if (conn) {
+        stopOAuthPolling();
+        await loadWizardDetail();
+        showToast(`${wizard.provider} connected.`);
+      }
+    } catch {}
+  }, 2000);
+
+  wizard.popupTimer = window.setInterval(() => {
+    if (wizard.popup && wizard.popup.closed) {
+      window.clearInterval(wizard.popupTimer);
+      wizard.popupTimer = null;
+      window.setTimeout(async () => {
+        await loadWizardDetail();
+        if (wizard.detail?.status !== "connected") {
+          showWizardError("Authorization window closed before completing. Try again to finish connecting.");
+          stopOAuthPolling();
+        }
+      }, 1200);
+    }
+  }, 1000);
+}
+
+async function submitManualToken() {
+  const token = document.querySelector("#connect-manual-input").value.trim();
+  if (!token) {
+    showWizardError("Paste a token to continue.");
+    return;
+  }
+  showWizardError("");
+  try {
+    await api("/api/oauth/manual", {
+      method: "POST",
+      body: JSON.stringify({ provider: wizard.provider, token })
+    });
+    audit(`${wizard.provider} token saved`);
+    showToast(`${wizard.provider} connected.`);
+    await loadWizardDetail();
+  } catch (error) {
+    showWizardError(error.message);
+  }
+}
+
+async function verifyConnection() {
+  const result = document.querySelector("#connect-verify-result");
+  result.hidden = false;
+  result.className = "connect-verify-result pending";
+  result.textContent = "Pinging provider…";
+  try {
+    const data = await api(
+      `/api/connectors?action=verify&name=${encodeURIComponent(wizard.provider)}`
+    );
+    if (data.verified) {
+      result.className = "connect-verify-result ok";
+      result.textContent = `Verified · ${data.account || "live token"}${data.scope ? ` · scope: ${data.scope}` : ""}`;
+      audit(`${wizard.provider} verified (${data.account || "ok"})`);
+    } else {
+      result.className = "connect-verify-result fail";
+      result.textContent = `Token rejected: ${data.message || "unknown error"}`;
+    }
+  } catch (error) {
+    result.className = "connect-verify-result fail";
+    result.textContent = error.message || "Verification failed.";
+  }
+}
+
+async function disconnectProvider() {
+  if (!wizard.provider) return;
+  if (!window.confirm(`Disconnect ${wizard.provider} from this workspace?`)) return;
+  try {
+    await api("/api/oauth/disconnect", {
+      method: "POST",
+      body: JSON.stringify({ provider: wizard.provider })
+    });
+    audit(`${wizard.provider} disconnected`);
+    showToast(`${wizard.provider} disconnected.`);
+    await loadWizardDetail();
+  } catch (error) {
+    showWizardError(error.message);
+  }
+}
+
+async function loadProjects() {
+  const box = document.querySelector("#connect-projects");
+  const picker = document.querySelector("#project-picker");
+  if (!wizard.provider) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  picker.innerHTML = `<div class="project-picker-empty"><span class="spinner" aria-hidden="true"></span> Loading projects from ${escapeHtml(wizard.provider)}…</div>`;
+  try {
+    const data = await api(`/api/connectors?action=projects&name=${encodeURIComponent(wizard.provider)}`);
+    if (data.error) {
+      picker.innerHTML = `<div class="project-picker-empty">${escapeHtml(data.error)}</div>`;
+      return;
+    }
+    const projects = data.projects || [];
+    if (!projects.length) {
+      picker.innerHTML = `<div class="project-picker-empty">No projects returned. The account may not have any repositories yet.</div>`;
+      return;
+    }
+    picker.innerHTML = projects
+      .map((project) => {
+        const url = project.url || "";
+        return `
+          <div class="project">
+            <div>
+              <strong>${escapeHtml(project.name || project.id)}</strong>
+              <span>${escapeHtml(project.description || url)}</span>
+            </div>
+            <button class="secondary" type="button" data-pick-project="${escapeHtml(url)}">Scan this</button>
+          </div>
+        `;
+      })
+      .join("");
+  } catch (error) {
+    picker.innerHTML = `<div class="project-picker-empty">${escapeHtml(error.message || "Could not load projects.")}</div>`;
+  }
+}
+
+function chooseProject(url) {
+  if (!url) return;
+  const input = document.querySelector("#source-url");
+  input.value = url;
+  audit(`Project selected for scan: ${url}`);
+  showToast("Project loaded into the scan form.");
+  closeConnectionWizard();
+  document.querySelector("#scan")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  input.focus({ preventScroll: true });
+}
+
+async function startQuickConnect() {
+  if (!session.user) {
+    openAuthModal("signin");
+    showToast("Sign in to use QuickConnect.");
+    return;
+  }
+  const order = ["GitHub", "GitLab", "Bitbucket", "Vercel"];
+  const connected = order.find((name) => state.connectors[name]?.status === "connected");
+  if (connected) {
+    openConnectionWizard(connected);
+    return;
+  }
+  const configured = order.find((name) => {
+    const s = state.connectors[name]?.status;
+    return s && s !== "configuration_required";
+  });
+  openConnectionWizard(configured || order[0]);
+}
+
+async function loadAllConnectorStatuses() {
+  if (!session.user) return;
+  try {
+    const data = await api("/api/connectors?action=list");
+    for (const entry of data.connectors || []) {
+      state.connectors[entry.name] = {
+        status: entry.status,
+        type: entry.type,
+        connectedAt: entry.connectedAt || null,
+        scope: entry.scope || null
+      };
+    }
+    saveState();
+    renderConnectors();
+  } catch {
+    /* unauthenticated or transient — keep cached state */
+  }
+}
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin) return;
+  const data = event.data;
+  if (!data || data.type !== "codecanic:connector") return;
+  if (!wizard.provider || data.provider !== wizard.provider) return;
+  stopOAuthPolling();
+  if (data.success) {
+    loadWizardDetail().then(() => showToast(`${wizard.provider} connected.`));
+  } else {
+    showWizardError(data.message || "Authorization did not complete.");
+  }
+});
 
 async function runScan() {
   const sourceUrl = document.querySelector("#source-url").value.trim();
@@ -477,21 +913,9 @@ async function runScan() {
   } catch (error) {
     window.clearInterval(timer);
     document.body.classList.remove("scan-active");
-    const findings = fallbackFindings;
-    state.activeReport = {
-      id: crypto.randomUUID(),
-      sourceUrl: sourceUrl || "Demo workspace",
-      scanDepth,
-      tier: state.tier,
-      status: "report_ready",
-      createdAt: new Date().toISOString(),
-      summary: { critical: 1, warnings: 0, autofixable: 1 },
-      findings
-    };
-    audit("Demo scan completed");
-    saveState();
-    renderAll();
-    showToast("Demo report ready. Deploy API endpoints for live scans.");
+    scanState.textContent = "Scan failed";
+    audit(`Scan failed: ${error.message}`);
+    showToast(error.message || "Scan failed. Connect a provider and retry.");
   }
 }
 
@@ -583,7 +1007,23 @@ document.addEventListener("click", (event) => {
   if (target.id === "run-scan") runScan();
   if (target.id === "export-report") exportReport();
   if (target.id === "remove-ads-button") choosePlan("Pro");
-  if (target.dataset.connect) connectSource(target.dataset.connect);
+  if (target.dataset.connect) {
+    if (!session.user) {
+      openAuthModal("signin");
+      showToast("Sign in to connect a provider.");
+    } else {
+      openConnectionWizard(target.dataset.connect);
+    }
+  }
+  if (target.id === "quickconnect") startQuickConnect();
+  if (target.id === "refresh-connectors") loadAllConnectorStatuses();
+  if (target.id === "connect-close") closeConnectionWizard();
+  if (target.id === "connect-oauth-start") startOAuthFlow();
+  if (target.id === "connect-oauth-cancel") stopOAuthPolling();
+  if (target.id === "connect-manual-submit") submitManualToken();
+  if (target.id === "connect-verify") verifyConnection();
+  if (target.id === "connect-disconnect") disconnectProvider();
+  if (target.dataset.pickProject) chooseProject(target.dataset.pickProject);
   if (target.dataset.single) approveRepairs([target.dataset.single]);
   if (target.dataset.plan) choosePlan(target.dataset.plan);
 
