@@ -470,6 +470,21 @@ async function downloadMyData() {
   }
 }
 
+function loadAdSlots() {
+  const slots = document.querySelectorAll("ins.adsbygoogle");
+  for (const slot of slots) {
+    if (slot.dataset.loaded === "1") continue;
+    const id = slot.getAttribute("data-ad-slot") || "";
+    if (!id || id.startsWith("REPLACE_WITH")) continue;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+      slot.dataset.loaded = "1";
+    } catch (err) {
+      console.warn("AdSense push failed", err);
+    }
+  }
+}
+
 function maybeShowCookieBanner() {
   try {
     if (localStorage.getItem("codecanic-cookie-ack") === "1") return;
@@ -1286,3 +1301,4 @@ renderAll();
 syncActiveNavigation();
 refreshSession();
 maybeShowCookieBanner();
+loadAdSlots();
