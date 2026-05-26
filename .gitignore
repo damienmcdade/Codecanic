@@ -1,6 +1,30 @@
-.vercel
-.codecanic
-public
-.data
-.env
-.env.local
+# Node
+node_modules/
+package-lock.json.bak
+npm-debug.log*
+
+# Build artifacts
+public/
+build/
+dist/
+.data/
+.data-*/
+
+# Capacitor / Android generated state
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+
+# Android signing — KEEP PRIVATE
+android/codecanic-release.keystore
+android/keystore.properties
+*.keystore
+*.jks
+
+# iOS build artifacts
+ios/Codecanic/build/
+ios/Codecanic/DerivedData/
+
+# OS
+.DS_Store

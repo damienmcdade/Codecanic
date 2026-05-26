@@ -1,0 +1,13 @@
+# Build artifacts
+/build/
+/app/build/
+.gradle/
+local.properties
+
+# Generated source assets
+/app/src/main/assets/public/
+
+# Secrets — NEVER commit
+codecanic-release.keystore
+keystore.properties
+*.jks
