@@ -283,6 +283,19 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+    <div class="auth-modal billing-notice-modal" id="billing-notice" hidden aria-hidden="true">
+      <div class="auth-modal-card billing-notice-card" role="dialog" aria-labelledby="billing-notice-title">
+        <header>
+          <h2 id="billing-notice-title">Subscription billing not enabled</h2>
+          <button class="icon-button" type="button" id="billing-notice-close" aria-label="Close">×</button>
+        </header>
+        <p id="billing-notice-message" class="muted"></p>
+        <div id="billing-notice-envs"></div>
+        <p class="muted">If you want Pro early, email <a href="mailto:billing@codecanic.app">billing@codecanic.app</a>.</p>
+        <button class="primary" type="button" id="billing-notice-ack">Got it</button>
+      </div>
+    </div>
+
     <div class="auth-modal legal-modal" id="legal-modal" hidden aria-hidden="true">
       <div class="auth-modal-card legal-card" role="dialog" aria-labelledby="legal-modal-title">
         <header>

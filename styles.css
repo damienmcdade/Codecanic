@@ -1303,6 +1303,15 @@ body.ads-off .tier-card .plan-badge {
   color: var(--muted);
 }
 
+.billing-notice-card {
+  width: min(440px, 100%);
+  gap: 14px;
+}
+
+.billing-notice-card .connect-snippet {
+  margin-top: 8px;
+}
+
 .link-button {
   background: transparent;
   border: 0;

@@ -1212,23 +1212,61 @@ async function choosePlan(planName) {
     return;
   }
 
+  if (!session.user) {
+    openAuthModal("signup");
+    showToast("Create an account to go ad-free.");
+    return;
+  }
+
+  let checkout;
   try {
-    const checkout = await api("/api/checkout", {
+    checkout = await api("/api/checkout", {
       method: "POST",
       body: JSON.stringify({ plan: planName })
     });
-    if (checkout.url) {
-      window.location.href = checkout.url;
-      return;
-    }
-    state.tier = planName;
-    audit(`${planName} selected; Stripe configuration needed`);
-    saveState();
-    renderAll();
-    showToast(checkout.message || `${planName} selected.`);
   } catch (error) {
-    showToast(error.message);
+    showToast(error.message || "Checkout could not start.");
+    return;
   }
+
+  if (checkout.url) {
+    window.location.href = checkout.url;
+    return;
+  }
+
+  if (checkout.status === "configuration_required") {
+    openBillingNotice(checkout);
+    audit(`${planName} checkout unavailable: Stripe not configured`);
+    return;
+  }
+
+  showToast(checkout.message || `${planName} selected.`);
+}
+
+function openBillingNotice(checkout) {
+  const modal = document.querySelector("#billing-notice");
+  if (!modal) {
+    showToast(checkout.message || "Subscription billing isn't enabled yet.");
+    return;
+  }
+  document.querySelector("#billing-notice-message").textContent =
+    "Pro subscription billing isn't live yet on this Codecanic deployment. Your account remains on Free — no charges, no plan change.";
+  const list = document.querySelector("#billing-notice-envs");
+  const envs = checkout.requiredEnv || [];
+  list.innerHTML = envs.length
+    ? `<p class="muted">For the Codecanic admin: set these environment variables on the API service, then redeploy.</p><pre class="connect-snippet">${envs
+        .map((k) => `${k}=...`)
+        .join("\n")}</pre>`
+    : "";
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeBillingNotice() {
+  const modal = document.querySelector("#billing-notice");
+  if (!modal) return;
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
 }
 
 function exportReport() {
@@ -1273,6 +1311,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "legal-close") closeLegalModal();
   if (target.id === "download-data") downloadMyData();
   if (target.id === "cookie-acknowledge") ackCookieBanner();
+  if (target.id === "billing-notice-close" || target.id === "billing-notice-ack") closeBillingNotice();
 
   if (target.id === "run-scan") runScan();
   if (target.id === "export-report") exportReport();
