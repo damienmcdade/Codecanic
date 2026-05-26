@@ -410,6 +410,7 @@ async function submitAuth(form) {
     audit(`Signed in as ${session.user.email}`);
     renderAll();
     showToast(`Welcome, ${session.user.name || session.user.email}.`);
+    loadAllConnectorStatuses();
   } catch (error) {
     errorEl.textContent = error.message;
     errorEl.hidden = false;
@@ -425,6 +426,7 @@ async function signOut() {
   session.user = null;
   session.organizations = [];
   state.activeOrgSlug = null;
+  state.connectors = {};
   saveState();
   audit("Signed out");
   renderAll();
@@ -457,6 +459,30 @@ const wizard = {
 
 const wizardEl = () => document.querySelector("#connect-modal");
 
+function renderProviderSwitcher() {
+  const el = document.querySelector("#connect-switcher");
+  if (!el) return;
+  el.innerHTML = connectors
+    .map((c) => {
+      const live = state.connectors[c.name] || {};
+      const connected = live.status === "connected";
+      const isCurrent = c.name === wizard.provider;
+      const cls = [
+        "switcher-chip",
+        isCurrent ? "current" : "",
+        connected ? "connected" : "",
+        c.type === "manual" ? "manual" : "oauth"
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return `<button class="${cls}" type="button" data-switch-provider="${escapeHtml(c.name)}">
+        <span class="switcher-icon" aria-hidden="true">${escapeHtml(c.icon)}</span>
+        <span>${escapeHtml(c.name)}</span>
+      </button>`;
+    })
+    .join("");
+}
+
 function setWizardStep(step) {
   document.querySelectorAll("#connect-stepper li").forEach((li) => {
     const order = ["preflight", "authorize", "verify"];
@@ -488,6 +514,7 @@ function openConnectionWizard(name) {
   document.querySelector("#connect-modal-title").textContent = `Connect ${name}`;
   document.querySelector("#connect-subtitle").textContent =
     meta.type === "manual" ? "Paste-token setup, 3 steps" : "Guided OAuth setup, 3 steps";
+  document.querySelector("#connect-summary").textContent = "";
   document.querySelector("#connect-oauth-name").textContent = name;
   document.querySelector("#connect-manual-title").textContent = `Paste your ${name} token`;
   ["connect-admin", "connect-manual", "connect-oauth", "connect-confirm"].forEach((id) => {
@@ -499,6 +526,7 @@ function openConnectionWizard(name) {
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
   setWizardStep("preflight");
+  renderProviderSwitcher();
   loadWizardDetail();
 }
 
@@ -650,11 +678,14 @@ async function loadWizardDetail() {
     };
     saveState();
     renderConnectors();
+    renderProviderSwitcher();
     const ready = renderPreflight(detail);
     renderAdminBlock(detail);
     renderManualBlock(detail);
     renderOAuthBlock(detail);
     renderConfirmBlock(detail);
+    const summaryEl = document.querySelector("#connect-summary");
+    summaryEl.textContent = detail.accessSummary || "";
     if (detail.status === "connected") {
       setWizardStep("verify");
     } else if (ready && detail.configured) {
@@ -801,7 +832,8 @@ async function loadProjects() {
     }
     const projects = data.projects || [];
     if (!projects.length) {
-      picker.innerHTML = `<div class="project-picker-empty">No projects returned. The account may not have any repositories yet.</div>`;
+      const note = data.message || "No projects returned. The account may not have any repositories yet.";
+      picker.innerHTML = `<div class="project-picker-empty">${escapeHtml(note)}</div>`;
       return;
     }
     picker.innerHTML = projects
@@ -1024,6 +1056,11 @@ document.addEventListener("click", (event) => {
   if (target.id === "connect-verify") verifyConnection();
   if (target.id === "connect-disconnect") disconnectProvider();
   if (target.dataset.pickProject) chooseProject(target.dataset.pickProject);
+  const switchEl = target.closest("[data-switch-provider]");
+  if (switchEl) {
+    const switchTo = switchEl.dataset.switchProvider;
+    if (switchTo && switchTo !== wizard.provider) openConnectionWizard(switchTo);
+  }
   if (target.dataset.single) approveRepairs([target.dataset.single]);
   if (target.dataset.plan) choosePlan(target.dataset.plan);
 
@@ -1077,8 +1114,11 @@ document.querySelector("#auth-form").addEventListener("submit", (event) => {
 
 document.querySelector("#org-switcher").addEventListener("change", (event) => {
   state.activeOrgSlug = event.target.value;
+  state.connectors = {};
   saveState();
   audit(`Active org switched to ${state.activeOrgSlug}`);
+  renderConnectors();
+  loadAllConnectorStatuses();
 });
 
 document.querySelector("#select-all").addEventListener("change", (event) => {
