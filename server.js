@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
+import { randomBytes } from "node:crypto";
 import auth from "./api/auth.js";
 import checkout from "./api/checkout.js";
 import connectors from "./api/connectors.js";
@@ -74,18 +75,97 @@ async function serveStatic(req, res) {
   }
 }
 
+const baseSecurityHeaders = {
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin"
+};
+
+function buildCsp(nonce) {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'"
+  ].join("; ");
+}
+
+function applySecurityHeaders(req, res) {
+  const nonce = randomBytes(16).toString("base64url");
+  req.cspNonce = nonce;
+  res.setHeader("Content-Security-Policy", buildCsp(nonce));
+  for (const [k, v] of Object.entries(baseSecurityHeaders)) res.setHeader(k, v);
+}
+
+const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function originAllowed(req) {
+  const origin = req.headers.origin || req.headers.referer;
+  if (!origin) return false;
+  let parsed;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  const host = req.headers.host || "";
+  const expectedHost = host.split(":")[0];
+  const originHost = parsed.hostname;
+  if (originHost === expectedHost) return true;
+  const allowList = (process.env.CODECANIC_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (allowList.includes(parsed.origin)) return true;
+  if (originHost === "codecanic.app") return true;
+  if (originHost.endsWith(".vercel.app") && originHost.includes("codecanic")) return true;
+  return false;
+}
+
 const server = createServer(async (req, res) => {
+  applySecurityHeaders(req, res);
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+  if (
+    stateChangingMethods.has(req.method) &&
+    url.pathname.startsWith("/api/") &&
+    !url.pathname.startsWith("/api/oauth/callback") &&
+    !originAllowed(req)
+  ) {
+    send(res, 403, JSON.stringify({ error: "Cross-origin request rejected." }), "application/json; charset=utf-8");
+    return;
+  }
+
   const handler = exactRoutes.get(url.pathname);
 
   if (handler) {
-    await handler(req, res);
+    try {
+      await handler(req, res);
+    } catch (err) {
+      console.error("[handler error]", err);
+      if (!res.headersSent) send(res, 500, JSON.stringify({ error: "Internal error." }), "application/json; charset=utf-8");
+    }
     return;
   }
 
   const prefixed = prefixRoutes.find(({ prefix }) => url.pathname.startsWith(prefix));
   if (prefixed) {
-    await prefixed.handler(req, res);
+    try {
+      await prefixed.handler(req, res);
+    } catch (err) {
+      console.error("[handler error]", err);
+      if (!res.headersSent) send(res, 500, JSON.stringify({ error: "Internal error." }), "application/json; charset=utf-8");
+    }
     return;
   }
 

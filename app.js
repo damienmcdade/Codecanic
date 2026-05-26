@@ -397,6 +397,12 @@ async function submitAuth(form) {
   const mode = form.dataset.mode || "signin";
   const fd = new FormData(form);
   const payload = Object.fromEntries(fd);
+  if (mode === "signup") {
+    payload.acceptTerms = form.querySelector("#acceptTerms")?.checked === true;
+    payload.ageConfirmed = form.querySelector("#ageConfirm")?.checked === true;
+    payload.marketingOptIn = form.querySelector("#marketingOptIn")?.checked === true;
+    payload.age = payload.ageConfirmed ? 16 : 0;
+  }
   const errorEl = document.querySelector("#auth-error");
   errorEl.hidden = true;
   try {
@@ -431,6 +437,188 @@ async function signOut() {
   audit("Signed out");
   renderAll();
   showToast("Signed out.");
+}
+
+const legalText = {
+  privacy: `
+    <h3>Privacy Policy</h3>
+    <p class="muted">Last updated: 2026-05-26.</p>
+    <p>Codecanic stores the personal data you give us so we can scan code, run repairs, and bill you. We are the data controller. Email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a> for any data subject request.</p>
+    <h4>What we collect</h4>
+    <ul>
+      <li>Email, name, password hash (scrypt with random salt), and account creation timestamp.</li>
+      <li>Organizations you create or join, and your role in each.</li>
+      <li>Access tokens you connect (GitHub, Vercel, GitLab, Bitbucket, Railway, Xcode). These are stored only for the linked workspace and used to fulfil scans and repairs you request.</li>
+      <li>Scan reports and repair audit entries generated from your repositories.</li>
+      <li>Signed session cookie (<code>codecanic_session</code>) that identifies your browser session. Sent on requests to Codecanic only.</li>
+      <li>Server logs (IP address, request path, timestamps) retained for up to 30 days for security and abuse prevention.</li>
+    </ul>
+    <h4>What we do NOT do</h4>
+    <ul>
+      <li>We do not sell your data.</li>
+      <li>We do not run third-party advertising or analytics trackers in this dashboard.</li>
+      <li>We do not access provider data outside what is necessary to fulfil a scan or repair you requested.</li>
+    </ul>
+    <h4>Your rights (GDPR / CCPA / equivalent)</h4>
+    <ul>
+      <li><strong>Access / portability:</strong> click "Download my data" in your account card.</li>
+      <li><strong>Deletion:</strong> click "Delete account" to permanently erase your record and sole-owned organizations.</li>
+      <li><strong>Rectification:</strong> email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a> for name/email corrections.</li>
+      <li><strong>Opt out of marketing:</strong> opt-in only — uncheck the marketing box at signup or email us.</li>
+    </ul>
+    <h4>Security</h4>
+    <p>Sessions are signed with HMAC-SHA256. Cookies use <code>HttpOnly</code>, <code>Secure</code> (in production), and <code>SameSite=Strict</code>. Provider tokens are stored encrypted at rest. Failed login attempts trigger a 15-minute lockout after 5 attempts. TLS is enforced on all connections.</p>
+    <h4>Children</h4>
+    <p>Codecanic is not directed to children under 16. We require an age confirmation at signup and will delete any account we discover belongs to a child under 16.</p>
+  `,
+  terms: `
+    <h3>Terms of Service</h3>
+    <p class="muted">Last updated: 2026-05-26.</p>
+    <p>By creating an account you agree to these terms. If you do not agree, do not use Codecanic.</p>
+    <h4>Service</h4>
+    <p>Codecanic scans repositories and infrastructure you connect to it and proposes repairs for your review. You retain ownership of your code, your provider accounts, and any data you submit.</p>
+    <h4>Acceptable use</h4>
+    <ul>
+      <li>Connect only providers you are authorised to access.</li>
+      <li>Do not use Codecanic to scan or modify systems you do not own or have written permission to test.</li>
+      <li>Do not attempt to reverse engineer, abuse, or overload the service.</li>
+      <li>Do not upload illegal content or use Codecanic to violate any applicable law.</li>
+    </ul>
+    <h4>Repairs and pull requests</h4>
+    <p>Codecanic proposes repairs but never merges them. You approve the segments you want before any change is queued. You are responsible for reviewing the code Codecanic suggests before merging it into production.</p>
+    <h4>Billing</h4>
+    <p>Free tier is supported by sponsor slots. Paid plans bill through Stripe. Cancel anytime; access continues to the end of the current billing period.</p>
+    <h4>Termination</h4>
+    <p>You can delete your account at any time. We may suspend accounts that violate these terms or applicable law.</p>
+    <h4>Warranty + liability</h4>
+    <p>Codecanic is provided "as is" without warranties. To the extent permitted by law, Codecanic's total liability is limited to the fees you paid in the 12 months preceding the claim. Codecanic is not liable for indirect or consequential damages.</p>
+    <h4>Governing law</h4>
+    <p>These terms are governed by the laws applicable to where Codecanic is incorporated. Disputes will be resolved in the courts of that jurisdiction.</p>
+    <h4>Changes</h4>
+    <p>If we materially change these terms we will notify you by email and via this dashboard.</p>
+  `
+};
+
+function openLegalModal(tab = "privacy") {
+  const modal = document.querySelector("#legal-modal");
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  setLegalTab(tab);
+}
+
+function closeLegalModal() {
+  const modal = document.querySelector("#legal-modal");
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function setLegalTab(tab) {
+  document.querySelectorAll("[data-legal-tab]").forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.legalTab === tab);
+  });
+  document.querySelector("#legal-modal-title").textContent =
+    tab === "terms" ? "Terms of Service" : "Privacy Policy";
+  document.querySelector("#legal-body").innerHTML = legalText[tab] || "";
+}
+
+async function downloadMyData() {
+  try {
+    const data = await api("/api/auth/export");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `codecanic-data-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    audit("Personal data exported");
+    showToast("Your data has been downloaded.");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function maybeShowCookieBanner() {
+  try {
+    if (localStorage.getItem("codecanic-cookie-ack") === "1") return;
+  } catch {
+    return;
+  }
+  const banner = document.querySelector("#cookie-banner");
+  if (banner) banner.hidden = false;
+}
+
+function ackCookieBanner() {
+  try {
+    localStorage.setItem("codecanic-cookie-ack", "1");
+  } catch {}
+  document.querySelector("#cookie-banner").hidden = true;
+}
+
+function openDeleteAccountModal() {
+  const modal = document.querySelector("#delete-modal");
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  document.querySelector("#delete-confirm-input").value = "";
+  document.querySelector("#delete-password-input").value = "";
+  document.querySelector("#delete-submit").disabled = true;
+  document.querySelector("#delete-error").hidden = true;
+}
+
+function closeDeleteAccountModal() {
+  const modal = document.querySelector("#delete-modal");
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function updateDeleteSubmitState() {
+  const confirm = document.querySelector("#delete-confirm-input").value.trim().toUpperCase();
+  const password = document.querySelector("#delete-password-input").value;
+  document.querySelector("#delete-submit").disabled = !(confirm === "DELETE" && password.length >= 1);
+}
+
+async function submitDeleteAccount() {
+  const confirm = document.querySelector("#delete-confirm-input").value.trim().toUpperCase();
+  const password = document.querySelector("#delete-password-input").value;
+  const errorEl = document.querySelector("#delete-error");
+  errorEl.hidden = true;
+  if (confirm !== "DELETE") {
+    errorEl.textContent = 'Type "DELETE" exactly to confirm.';
+    errorEl.hidden = false;
+    return;
+  }
+  if (!password) {
+    errorEl.textContent = "Re-enter your password to confirm.";
+    errorEl.hidden = false;
+    return;
+  }
+  const submit = document.querySelector("#delete-submit");
+  submit.disabled = true;
+  submit.textContent = "Deleting…";
+  try {
+    await api("/api/auth/account", {
+      method: "POST",
+      body: JSON.stringify({ password, confirm })
+    });
+    try {
+      localStorage.removeItem("codecanic-state");
+    } catch {}
+    session.user = null;
+    session.organizations = [];
+    state.activeOrgSlug = null;
+    state.connectors = {};
+    state.activeReport = null;
+    state.repairJobs = [];
+    state.audit = [];
+    closeDeleteAccountModal();
+    renderAll();
+    showToast("Account deleted. We're sorry to see you go.");
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.hidden = false;
+    submit.disabled = false;
+    submit.textContent = "Delete account forever";
+  }
 }
 
 async function createOrganization() {
@@ -517,11 +705,13 @@ function openConnectionWizard(name) {
   document.querySelector("#connect-summary").textContent = "";
   document.querySelector("#connect-oauth-name").textContent = name;
   document.querySelector("#connect-manual-title").textContent = `Paste your ${name} token`;
-  ["connect-admin", "connect-manual", "connect-oauth", "connect-confirm"].forEach((id) => {
+  ["connect-admin", "connect-manual", "connect-oauth", "connect-confirm", "connect-guide"].forEach((id) => {
     document.querySelector(`#${id}`).hidden = true;
   });
   document.querySelector("#connect-verify-result").hidden = true;
   document.querySelector("#connect-oauth-progress").hidden = true;
+  wizardGuide.open = false;
+  document.querySelector("#connect-guide-toggle").setAttribute("aria-expanded", "false");
   const modal = wizardEl();
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
@@ -636,6 +826,63 @@ function renderManualBlock(detail) {
     wizard.provider === "Xcode" ? "10-character Team ID" : "Paste personal access token";
 }
 
+function detectGuideOs() {
+  const ua = (navigator.userAgent || "").toLowerCase();
+  if (ua.includes("mac")) return "mac";
+  if (ua.includes("win")) return "windows";
+  if (ua.includes("linux") || ua.includes("ubuntu") || ua.includes("debian")) return "linux";
+  return "mac";
+}
+
+const wizardGuide = { os: detectGuideOs(), open: false };
+
+function renderGuide(detail) {
+  const guide = document.querySelector("#connect-guide");
+  const setupWrap = document.querySelector("#connect-guide-setup-wrap");
+  const setupTitle = document.querySelector("#connect-guide-setup-title");
+  const stepsList = document.querySelector("#connect-guide-steps");
+  const provLabel = document.querySelectorAll(".guide-provider");
+  const cliWrap = document.querySelector("#connect-guide-cli-wrap");
+  const cliName = document.querySelector(".guide-cli-name");
+  const cliCmd = document.querySelector("#connect-guide-cli-cmd");
+  const cliQuick = document.querySelector("#connect-guide-cli-quickstart");
+  const cliLink = document.querySelector("#connect-guide-cli-link");
+
+  provLabel.forEach((el) => (el.textContent = wizard.provider || ""));
+
+  const isManual = detail.type === "manual";
+  if (isManual) {
+    setupTitle.innerHTML = `Where to find your <span class="guide-provider">${escapeHtml(wizard.provider || "")}</span> token`;
+    const tokenSteps = detail.tokenInstructions || [];
+    stepsList.innerHTML = tokenSteps.map((s) => `<li>${escapeHtml(s)}</li>`).join("");
+    setupWrap.hidden = !tokenSteps.length;
+  } else {
+    setupTitle.innerHTML = `Admin: register an OAuth app on <span class="guide-provider">${escapeHtml(wizard.provider || "")}</span>`;
+    const steps = detail.setupSteps || [];
+    stepsList.innerHTML = steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("");
+    setupWrap.hidden = !steps.length;
+  }
+
+  if (detail.cli) {
+    cliWrap.hidden = false;
+    cliName.textContent = detail.cli.name;
+    cliQuick.textContent = detail.cli.quickstart || "";
+    cliLink.href = detail.cli.homepage || "#";
+    cliLink.hidden = !detail.cli.homepage;
+    const os = wizardGuide.os;
+    document.querySelectorAll("#connect-guide .connect-guide-tabs button").forEach((b) => {
+      b.classList.toggle("selected", b.dataset.cliOs === os);
+    });
+    cliCmd.textContent = detail.cli.install?.[os] || "Not available for this OS.";
+  } else {
+    cliWrap.hidden = true;
+  }
+
+  const toggle = document.querySelector("#connect-guide-toggle");
+  toggle.setAttribute("aria-expanded", wizardGuide.open ? "true" : "false");
+  guide.hidden = !wizardGuide.open;
+}
+
 function renderOAuthBlock(detail) {
   const block = document.querySelector("#connect-oauth");
   if (detail.type !== "oauth" || detail.status === "connected" || detail.status === "configuration_required") {
@@ -646,6 +893,7 @@ function renderOAuthBlock(detail) {
   document.querySelector("#connect-oauth-progress").hidden = true;
   const button = document.querySelector("#connect-oauth-start");
   button.disabled = !detail.authUrl;
+  renderGuide(detail);
 }
 
 function renderConfirmBlock(detail) {
@@ -684,6 +932,7 @@ async function loadWizardDetail() {
     renderManualBlock(detail);
     renderOAuthBlock(detail);
     renderConfirmBlock(detail);
+    renderGuide(detail);
     const summaryEl = document.querySelector("#connect-summary");
     summaryEl.textContent = detail.accessSummary || "";
     if (detail.status === "connected") {
@@ -866,25 +1115,6 @@ function chooseProject(url) {
   input.focus({ preventScroll: true });
 }
 
-async function startQuickConnect() {
-  if (!session.user) {
-    openAuthModal("signin");
-    showToast("Sign in to use QuickConnect.");
-    return;
-  }
-  const order = ["GitHub", "GitLab", "Bitbucket", "Vercel"];
-  const connected = order.find((name) => state.connectors[name]?.status === "connected");
-  if (connected) {
-    openConnectionWizard(connected);
-    return;
-  }
-  const configured = order.find((name) => {
-    const s = state.connectors[name]?.status;
-    return s && s !== "configuration_required";
-  });
-  openConnectionWizard(configured || order[0]);
-}
-
 async function loadAllConnectorStatuses() {
   if (!session.user) return;
   try {
@@ -1035,6 +1265,14 @@ document.addEventListener("click", (event) => {
   if (target.id === "auth-close") closeAuthModal();
   if (target.id === "sign-out-button") signOut();
   if (target.id === "new-org-button") createOrganization();
+  if (target.id === "delete-account-button") openDeleteAccountModal();
+  if (target.id === "delete-close" || target.id === "delete-cancel") closeDeleteAccountModal();
+  if (target.id === "delete-submit") submitDeleteAccount();
+  if (target.dataset.openLegal) openLegalModal(target.dataset.openLegal);
+  if (target.dataset.legalTab) setLegalTab(target.dataset.legalTab);
+  if (target.id === "legal-close") closeLegalModal();
+  if (target.id === "download-data") downloadMyData();
+  if (target.id === "cookie-acknowledge") ackCookieBanner();
 
   if (target.id === "run-scan") runScan();
   if (target.id === "export-report") exportReport();
@@ -1047,8 +1285,15 @@ document.addEventListener("click", (event) => {
       openConnectionWizard(target.dataset.connect);
     }
   }
-  if (target.id === "quickconnect") startQuickConnect();
   if (target.id === "refresh-connectors") loadAllConnectorStatuses();
+  if (target.id === "connect-guide-toggle") {
+    wizardGuide.open = !wizardGuide.open;
+    if (wizard.detail) renderGuide(wizard.detail);
+  }
+  if (target.dataset.cliOs) {
+    wizardGuide.os = target.dataset.cliOs;
+    if (wizard.detail) renderGuide(wizard.detail);
+  }
   if (target.id === "connect-close") closeConnectionWizard();
   if (target.id === "connect-oauth-start") startOAuthFlow();
   if (target.id === "connect-oauth-cancel") stopOAuthPolling();
@@ -1112,6 +1357,9 @@ document.querySelector("#auth-form").addEventListener("submit", (event) => {
   submitAuth(event.currentTarget);
 });
 
+document.querySelector("#delete-confirm-input").addEventListener("input", updateDeleteSubmitState);
+document.querySelector("#delete-password-input").addEventListener("input", updateDeleteSubmitState);
+
 document.querySelector("#org-switcher").addEventListener("change", (event) => {
   state.activeOrgSlug = event.target.value;
   state.connectors = {};
@@ -1144,3 +1392,4 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
 renderAll();
 syncActiveNavigation();
 refreshSession();
+maybeShowCookieBanner();

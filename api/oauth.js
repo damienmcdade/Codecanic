@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { getConnector, json, readBody } from "./_lib.js";
 import { read, write } from "./_data.js";
 import { currentUserContext } from "./_auth.js";
+import { encryptSecret } from "./_crypto.js";
 
 const manualProviders = new Set(["Railway", "Xcode"]);
 
@@ -164,7 +165,7 @@ async function exchangeCode(provider, code, req) {
   };
 }
 
-function renderHtml(title, message, { provider = null, success = false } = {}) {
+function renderHtml(title, message, { provider = null, success = false, nonce = "" } = {}) {
   const payload = JSON.stringify({
     type: "codecanic:connector",
     provider,
@@ -176,7 +177,7 @@ function renderHtml(title, message, { provider = null, success = false } = {}) {
 <h1 style="color:${success ? "#14b8a6" : "#f87171"};">${title}</h1>
 <p>${message}</p>
 <p><a href="/" style="color:#2dd4bf;">Return to Codecanic</a></p>
-<script>
+<script nonce="${nonce}">
 (function(){
   try {
     if (window.opener && !window.opener.closed) {
@@ -204,14 +205,14 @@ async function callback(req, res) {
   const error = url.searchParams.get("error_description") || url.searchParams.get("error");
 
   if (error) {
-    sendHtml(res, 400, renderHtml("Authorization cancelled", error, { provider, success: false }));
+    sendHtml(res, 400, renderHtml("Authorization cancelled", error, { provider, success: false, nonce: req.cspNonce }));
     return;
   }
   if (!provider || !code || !stateToken) {
     sendHtml(
       res,
       400,
-      renderHtml("Missing parameters", "Provider, code, and state are required.", { provider, success: false })
+      renderHtml("Missing parameters", "Provider, code, and state are required.", { provider, success: false, nonce: req.cspNonce })
     );
     return;
   }
@@ -220,7 +221,7 @@ async function callback(req, res) {
     sendHtml(
       res,
       400,
-      renderHtml("State validation failed", "OAuth state is invalid or expired.", { provider, success: false })
+      renderHtml("State validation failed", "OAuth state is invalid or expired.", { provider, success: false, nonce: req.cspNonce })
     );
     return;
   }
@@ -252,8 +253,8 @@ async function callback(req, res) {
           provider,
           organizationId: payload.organizationId,
           userId: payload.userId,
-          accessToken: token.accessToken,
-          refreshToken: token.refreshToken,
+          accessToken: encryptSecret(token.accessToken),
+          refreshToken: token.refreshToken ? encryptSecret(token.refreshToken) : null,
           tokenType: token.tokenType,
           scope: token.scope,
           expiresIn: token.expiresIn,
@@ -270,11 +271,12 @@ async function callback(req, res) {
       200,
       renderHtml(`${provider} connected`, "Authorization complete. You can close this window.", {
         provider,
-        success: true
+        success: true,
+        nonce: req.cspNonce
       })
     );
   } catch (err) {
-    sendHtml(res, 502, renderHtml("Authorization failed", err.message, { provider, success: false }));
+    sendHtml(res, 502, renderHtml("Authorization failed", err.message, { provider, success: false, nonce: req.cspNonce }));
   }
 }
 
@@ -322,7 +324,7 @@ async function manual(req, res) {
         provider,
         organizationId: organization.id,
         userId: context.user.id,
-        accessToken: token,
+        accessToken: encryptSecret(token),
         refreshToken: null,
         tokenType: "manual",
         scope: null,

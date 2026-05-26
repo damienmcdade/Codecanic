@@ -57,6 +57,12 @@
               <button class="ghost" type="button" id="new-org-button">New org</button>
               <button class="ghost" type="button" id="sign-out-button">Sign out</button>
             </div>
+            <div class="account-legal-links">
+              <button type="button" class="link-button" id="download-data">Download my data</button>
+              <button type="button" class="link-button" data-open-legal="privacy">Privacy</button>
+              <button type="button" class="link-button" data-open-legal="terms">Terms</button>
+            </div>
+            <button class="danger-link" type="button" id="delete-account-button">Delete account</button>
           </div>
         </div>
       </aside>
@@ -148,13 +154,7 @@
               </div>
               <button class="icon-button" type="button" id="refresh-connectors" aria-label="Refresh connectors">↻</button>
             </div>
-            <div class="quickconnect-banner" id="quickconnect-banner">
-              <div>
-                <strong>QuickConnect</strong>
-                <span>Sign into your GitHub, GitLab, Bitbucket, or Vercel account, authorize Codecanic, and pick a project to scan — all from this window.</span>
-              </div>
-              <button class="primary" type="button" id="quickconnect">QuickConnect</button>
-            </div>
+            <p class="connectors-lede">Click a connector to sign in to your provider, authorize Codecanic, and pick a project — guided step-by-step.</p>
             <div class="connector-list" id="connector-list"></div>
           </article>
 
@@ -283,6 +283,76 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+    <div class="auth-modal legal-modal" id="legal-modal" hidden aria-hidden="true">
+      <div class="auth-modal-card legal-card" role="dialog" aria-labelledby="legal-modal-title">
+        <header>
+          <h2 id="legal-modal-title">Privacy Policy</h2>
+          <button class="icon-button" type="button" id="legal-close" aria-label="Close">×</button>
+        </header>
+        <div class="legal-tabs" role="tablist">
+          <button type="button" class="selected" data-legal-tab="privacy" role="tab">Privacy</button>
+          <button type="button" data-legal-tab="terms" role="tab">Terms</button>
+        </div>
+        <div class="legal-body" id="legal-body"></div>
+        <p class="muted legal-disclaimer">
+          Codecanic is a small team. These policies are good-faith summaries and not a substitute for advice from a licensed attorney in your jurisdiction.
+          For data subject requests under GDPR, CCPA, or equivalent laws, email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.
+        </p>
+      </div>
+    </div>
+
+    <div class="cookie-banner" id="cookie-banner" hidden>
+      <span>
+        Codecanic stores a signed session cookie when you sign in (required), and uses localStorage to remember your dashboard layout.
+        We do not run third-party analytics or advertising trackers.
+      </span>
+      <button class="primary" type="button" id="cookie-acknowledge">Got it</button>
+      <button type="button" class="link-button" data-open-legal="privacy">Privacy Policy</button>
+    </div>
+
+    <div class="auth-modal delete-modal" id="delete-modal" hidden aria-hidden="true">
+      <div class="auth-modal-card danger-card" role="dialog" aria-labelledby="delete-modal-title">
+        <header>
+          <h2 id="delete-modal-title">Delete account</h2>
+          <button class="icon-button" type="button" id="delete-close" aria-label="Close">×</button>
+        </header>
+
+        <div class="danger-banner">
+          <strong>This action is permanent and cannot be undone.</strong>
+          <span>Your account will be erased from every Codecanic server.</span>
+        </div>
+
+        <section class="danger-impact" aria-label="Impact summary">
+          <h3>What will be deleted</h3>
+          <ul id="delete-impact-list">
+            <li>Your user record, email, and password hash.</li>
+            <li>All active sign-in sessions on every device.</li>
+            <li>All organizations where you are the only owner, including every connector token, scan report, and repair audit in those orgs.</li>
+            <li>Your membership in any organizations where other owners remain. Those orgs are preserved.</li>
+            <li>All saved provider credentials (GitHub, GitLab, Bitbucket, Vercel, Railway, Xcode) linked to your account.</li>
+          </ul>
+          <p class="muted">Scan reports and repair history are not exported automatically. If you want a copy, use the dashboard's "Export report" button before continuing.</p>
+        </section>
+
+        <section class="danger-confirm">
+          <h3>Confirm</h3>
+          <label class="auth-field">
+            <span>Type <code>DELETE</code> to confirm</span>
+            <input id="delete-confirm-input" type="text" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="auth-field">
+            <span>Your password</span>
+            <input id="delete-password-input" type="password" autocomplete="current-password" />
+          </label>
+          <p class="auth-error" id="delete-error" hidden></p>
+          <div class="danger-actions">
+            <button class="ghost" type="button" id="delete-cancel">Cancel</button>
+            <button class="danger" type="button" id="delete-submit" disabled>Delete account forever</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
     <div class="auth-modal connect-modal" id="connect-modal" hidden aria-hidden="true">
       <div class="auth-modal-card connect-card" role="dialog" aria-labelledby="connect-modal-title">
         <header>
@@ -293,7 +363,10 @@
               <span class="muted" id="connect-subtitle">3-step guided setup</span>
             </div>
           </div>
-          <button class="icon-button" type="button" id="connect-close" aria-label="Close">×</button>
+          <div class="connect-header-actions">
+            <button class="info-button" type="button" id="connect-guide-toggle" aria-label="Show provider setup guide" aria-expanded="false" title="Provider setup guide & CLI install commands">i</button>
+            <button class="icon-button" type="button" id="connect-close" aria-label="Close">×</button>
+          </div>
         </header>
 
         <div class="connect-switcher" id="connect-switcher" aria-label="Switch provider"></div>
@@ -341,6 +414,24 @@
           </p>
         </section>
 
+        <div class="connect-guide" id="connect-guide" hidden>
+          <div class="connect-guide-section" id="connect-guide-setup-wrap">
+            <h4 id="connect-guide-setup-title">Admin: register an OAuth app on <span class="guide-provider">GitHub</span></h4>
+            <ol id="connect-guide-steps"></ol>
+          </div>
+          <div class="connect-guide-section" id="connect-guide-cli-wrap">
+            <h4>Optional: install the <span class="guide-cli-name">provider</span> CLI</h4>
+            <div class="connect-guide-tabs" role="tablist">
+              <button type="button" class="selected" data-cli-os="mac" role="tab">macOS</button>
+              <button type="button" data-cli-os="windows" role="tab">Windows</button>
+              <button type="button" data-cli-os="linux" role="tab">Linux</button>
+            </div>
+            <pre class="connect-snippet" id="connect-guide-cli-cmd"></pre>
+            <p class="muted">After install, run <code id="connect-guide-cli-quickstart"></code> to authenticate.</p>
+            <a class="connect-manual-link" id="connect-guide-cli-link" href="#" target="_blank" rel="noopener noreferrer">CLI docs →</a>
+          </div>
+        </div>
+
         <section class="connect-confirm" id="connect-confirm" hidden>
           <div class="connect-confirm-banner">
             <strong id="connect-confirm-title">Connected</strong>
@@ -386,8 +477,20 @@
             <input name="email" type="email" autocomplete="email" required />
           </label>
           <label>
-            <span>Password</span>
+            <span>Password <small class="muted" data-auth-only="signup">(15+ chars, upper + lower + digit + symbol)</small></span>
             <input name="password" type="password" minlength="8" autocomplete="current-password" required />
+          </label>
+          <label class="checkbox-row" data-auth-only="signup">
+            <input type="checkbox" name="ageConfirm" id="ageConfirm" />
+            <span>I confirm I am at least 16 years old.</span>
+          </label>
+          <label class="checkbox-row" data-auth-only="signup">
+            <input type="checkbox" name="acceptTerms" id="acceptTerms" required />
+            <span>I agree to the <button type="button" class="link-button" data-open-legal="terms">Terms of Service</button> and <button type="button" class="link-button" data-open-legal="privacy">Privacy Policy</button>.</span>
+          </label>
+          <label class="checkbox-row" data-auth-only="signup">
+            <input type="checkbox" name="marketingOptIn" id="marketingOptIn" />
+            <span>Send me product update emails (optional).</span>
           </label>
           <p class="auth-error" id="auth-error" hidden></p>
           <button class="primary" type="submit" id="auth-submit">Sign in</button>

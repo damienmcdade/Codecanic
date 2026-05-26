@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { getConnector, json } from "./_lib.js";
 import { read } from "./_data.js";
 import { currentUserContext } from "./_auth.js";
+import { decryptSecret } from "./_crypto.js";
 
 function signState(payload) {
   const secret = process.env.CODECANIC_SESSION_SECRET || "codecanic-development-secret-do-not-use-in-prod";
@@ -15,25 +16,84 @@ const providerGuides = {
     type: "oauth",
     accessSummary: "Read your repositories, pull requests, and dependency graph. Open pull requests for approved repairs.",
     scopes: ["repo", "read:org", "workflow"],
-    docsUrl: "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps"
+    docsUrl: "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps",
+    setupSteps: [
+      "Open github.com/settings/developers and click 'New OAuth App'.",
+      "Application name: Codecanic. Homepage URL: https://codecanic.app.",
+      "Authorization callback URL: paste the redirect URL shown above.",
+      "Register the application, then click 'Generate a new client secret'.",
+      "Copy Client ID + Client Secret into GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET on your Codecanic deployment."
+    ],
+    cli: {
+      name: "GitHub CLI (gh)",
+      homepage: "https://cli.github.com",
+      install: {
+        mac: "brew install gh",
+        windows: "winget install --id GitHub.cli",
+        linux: "sudo apt update && sudo apt install gh"
+      },
+      quickstart: "gh auth login"
+    }
   },
   Vercel: {
     type: "oauth",
     accessSummary: "Read deployments, environment variables, and runtime logs for your projects.",
     scopes: [],
-    docsUrl: "https://vercel.com/docs/integrations/oauth"
+    docsUrl: "https://vercel.com/docs/integrations/oauth",
+    setupSteps: [
+      "Open vercel.com/dashboard → Integrations → Create integration.",
+      "Pick your team and name it Codecanic.",
+      "Redirect URL: paste the redirect URL shown above. Read scope on Projects and Deployments.",
+      "Save the integration and grab Client ID + Client Secret.",
+      "Set VERCEL_CLIENT_ID and VERCEL_CLIENT_SECRET on your Codecanic deployment."
+    ],
+    cli: {
+      name: "Vercel CLI",
+      homepage: "https://vercel.com/docs/cli",
+      install: {
+        mac: "npm install -g vercel",
+        windows: "npm install -g vercel",
+        linux: "npm install -g vercel"
+      },
+      quickstart: "vercel login"
+    }
   },
   GitLab: {
     type: "oauth",
     accessSummary: "Read your repositories, CI pipelines, and issues. Open merge requests for approved repairs.",
     scopes: ["read_repository", "api"],
-    docsUrl: "https://docs.gitlab.com/ee/api/oauth2.html"
+    docsUrl: "https://docs.gitlab.com/ee/api/oauth2.html",
+    setupSteps: [
+      "Open gitlab.com/-/profile/applications.",
+      "Name: Codecanic.",
+      "Redirect URI: paste the redirect URL shown above.",
+      "Scopes: tick read_repository and api.",
+      "Save, then copy the Application ID + Secret into GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET on your Codecanic deployment."
+    ],
+    cli: {
+      name: "GitLab CLI (glab)",
+      homepage: "https://gitlab.com/gitlab-org/cli",
+      install: {
+        mac: "brew install glab",
+        windows: "winget install --id GitLab.GLab",
+        linux: "curl -fsSL https://gitlab.com/gitlab-org/cli/-/raw/main/scripts/install.sh | sh"
+      },
+      quickstart: "glab auth login"
+    }
   },
   Bitbucket: {
     type: "oauth",
     accessSummary: "Read your repositories, workspaces, and pull requests. Open pull requests for approved repairs.",
     scopes: ["repository", "account"],
-    docsUrl: "https://support.atlassian.com/bitbucket-cloud/docs/use-oauth-on-bitbucket-cloud/"
+    docsUrl: "https://support.atlassian.com/bitbucket-cloud/docs/use-oauth-on-bitbucket-cloud/",
+    setupSteps: [
+      "Open your Bitbucket workspace → Settings → OAuth consumers → Add consumer.",
+      "Name: Codecanic.",
+      "Callback URL: paste the redirect URL shown above.",
+      "Permissions: Repository Read, Account Read.",
+      "Save and copy the Key + Secret into BITBUCKET_CLIENT_ID and BITBUCKET_CLIENT_SECRET on your Codecanic deployment."
+    ],
+    cli: null
   },
   Railway: {
     type: "manual",
@@ -44,7 +104,17 @@ const providerGuides = {
       "Go to Account Settings → Tokens.",
       "Click New Token. Name it 'Codecanic'.",
       "Copy the token and paste it below. Codecanic stores it for this workspace only."
-    ]
+    ],
+    cli: {
+      name: "Railway CLI",
+      homepage: "https://docs.railway.com/develop/cli",
+      install: {
+        mac: "brew install railway",
+        windows: "iwr https://railway.com/install.ps1 | iex",
+        linux: "curl -fsSL https://railway.com/install.sh | sh"
+      },
+      quickstart: "railway login"
+    }
   },
   Xcode: {
     type: "manual",
@@ -54,7 +124,17 @@ const providerGuides = {
       "Open developer.apple.com and sign in.",
       "Go to Membership Details.",
       "Copy your 10-character Team ID and paste it below."
-    ]
+    ],
+    cli: {
+      name: "Xcode Command Line Tools",
+      homepage: "https://developer.apple.com/xcode/",
+      install: {
+        mac: "xcode-select --install",
+        windows: "Not available — Xcode requires macOS.",
+        linux: "Not available — Xcode requires macOS."
+      },
+      quickstart: "xcodebuild -version"
+    }
   }
 };
 
@@ -206,8 +286,9 @@ async function handleVerify(req, res, url) {
   }
 
   const guide = providerGuides[name];
+  const plainToken = decryptSecret(credential.accessToken);
   if (guide?.type === "manual" && name === "Xcode") {
-    const teamId = credential.accessToken || "";
+    const teamId = plainToken || "";
     const valid = /^[A-Z0-9]{10}$/i.test(teamId);
     json(res, valid ? 200 : 422, {
       provider: name,
@@ -234,7 +315,7 @@ async function handleVerify(req, res, url) {
   try {
     const response = await fetch(endpoint.url, {
       method: endpoint.method || "GET",
-      headers: { "User-Agent": "Codecanic-Verify", ...endpoint.auth(credential.accessToken) },
+      headers: { "User-Agent": "Codecanic-Verify", ...endpoint.auth(plainToken) },
       body: endpoint.body
     });
     const text = await response.text();
@@ -311,9 +392,10 @@ async function handleProjects(req, res, url) {
     return;
   }
   try {
+    const plainToken = decryptSecret(credential.accessToken);
     const response = await fetch(endpoint.url, {
       method: endpoint.method || "GET",
-      headers: { "User-Agent": "Codecanic-QuickConnect", ...endpoint.auth(credential.accessToken) },
+      headers: { "User-Agent": "Codecanic-Connect", ...endpoint.auth(plainToken) },
       body: endpoint.body
     });
     const text = await response.text();
@@ -369,6 +451,8 @@ async function handleStart(req, res, url) {
     docsUrl: guide?.docsUrl || null,
     tokenUrl: guide?.tokenUrl || null,
     tokenInstructions: guide?.tokenInstructions || null,
+    setupSteps: guide?.setupSteps || null,
+    cli: guide?.cli || null,
     redirectUri
   };
 

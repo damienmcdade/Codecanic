@@ -7,8 +7,26 @@ const SESSION_DAYS = 14;
 const SESSION_COOKIE = "codecanic_session";
 const KEY_LENGTH = 64;
 
+function isProductionLike() {
+  return Boolean(
+    process.env.NODE_ENV === "production" ||
+      process.env.VERCEL === "1" ||
+      process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_PROJECT_ID
+  );
+}
+
+const DEV_FALLBACK_SECRET = "codecanic-development-secret-do-not-use-in-prod";
+
 function secret() {
-  return process.env.CODECANIC_SESSION_SECRET || "codecanic-development-secret-do-not-use-in-prod";
+  const value = process.env.CODECANIC_SESSION_SECRET;
+  if (value && value.length >= 32 && value !== DEV_FALLBACK_SECRET) return value;
+  if (isProductionLike()) {
+    throw new Error(
+      "CODECANIC_SESSION_SECRET must be set to a 32+ character value in production. Refusing to use insecure fallback."
+    );
+  }
+  return value || DEV_FALLBACK_SECRET;
 }
 
 export function slugify(value) {
@@ -70,15 +88,17 @@ export function buildSessionCookie(token, { maxAgeDays = SESSION_DAYS, secure } 
     `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     "Path=/",
     "HttpOnly",
-    "SameSite=Lax",
+    "SameSite=Strict",
     `Max-Age=${Math.floor(maxAgeDays * 86400)}`
   ];
-  if (secure ?? process.env.NODE_ENV === "production") attrs.push("Secure");
+  if (secure ?? isProductionLike()) attrs.push("Secure");
   return attrs.join("; ");
 }
 
 export function clearSessionCookie() {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const attrs = [`${SESSION_COOKIE}=`, "Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
+  if (isProductionLike()) attrs.push("Secure");
+  return attrs.join("; ");
 }
 
 const MAX_SESSIONS_PER_USER = 5;

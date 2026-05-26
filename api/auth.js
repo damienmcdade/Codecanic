@@ -78,8 +78,23 @@ async function signup(req, res) {
     json(res, 400, { error: "Enter a valid email address." });
     return;
   }
-  if (password.length < 8) {
-    json(res, 400, { error: "Password must be at least 8 characters." });
+  if (password.length < 15) {
+    json(res, 400, { error: "Password must be at least 15 characters." });
+    return;
+  }
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    json(res, 400, {
+      error: "Password must include uppercase, lowercase, a digit, and a symbol."
+    });
+    return;
+  }
+  if (body.acceptTerms !== true) {
+    json(res, 400, { error: "You must accept the Terms of Service and Privacy Policy to create an account." });
+    return;
+  }
+  const age = Number(body.age);
+  if (!Number.isFinite(age) || age < 16) {
+    json(res, 400, { error: "You must confirm you are 16 or older to create an account (GDPR digital age of consent)." });
     return;
   }
 
@@ -91,7 +106,17 @@ async function signup(req, res) {
 
   const passwordHash = await hashPassword(password);
   const now = new Date().toISOString();
-  const user = { id: randomUUID(), email, name, passwordHash, createdAt: now };
+  const user = {
+    id: randomUUID(),
+    email,
+    name,
+    passwordHash,
+    createdAt: now,
+    termsAcceptedAt: now,
+    privacyAcceptedAt: now,
+    marketingOptIn: body.marketingOptIn === true,
+    ageConfirmed: true
+  };
 
   let createdOrg;
   let createdMembership;
@@ -176,6 +201,112 @@ async function logout(req, res) {
   json(res, 200, { status: "signed_out" });
 }
 
+async function exportData(req, res) {
+  const ctx = await currentUserContext(req);
+  if (!ctx) {
+    json(res, 401, { error: "Sign in to export your data." });
+    return;
+  }
+  const state = await read();
+  const userId = ctx.user.id;
+  const myMemberships = state.memberships.filter((m) => m.userId === userId);
+  const myOrgIds = myMemberships.map((m) => m.organizationId);
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    notice:
+      "This file contains personal data Codecanic stores about your account. Provider access tokens are redacted for safety. To revoke them, disconnect via the Connection Wizard or contact support.",
+    user: {
+      id: ctx.user.id,
+      email: ctx.user.email,
+      name: ctx.user.name,
+      createdAt: ctx.user.createdAt,
+      termsAcceptedAt: ctx.user.termsAcceptedAt || null,
+      privacyAcceptedAt: ctx.user.privacyAcceptedAt || null,
+      marketingOptIn: ctx.user.marketingOptIn === true
+    },
+    organizations: state.organizations
+      .filter((o) => myOrgIds.includes(o.id))
+      .map(publicOrganization),
+    memberships: myMemberships.map((m) => ({
+      organizationId: m.organizationId,
+      role: m.role,
+      createdAt: m.createdAt
+    })),
+    connectorCredentials: state.connectorCreds
+      .filter((c) => c.userId === userId || myOrgIds.includes(c.organizationId))
+      .map((c) => ({
+        provider: c.provider,
+        organizationId: c.organizationId,
+        tokenType: c.tokenType,
+        scope: c.scope,
+        updatedAt: c.updatedAt,
+        accessToken: "***redacted***",
+        refreshToken: c.refreshToken ? "***redacted***" : null
+      })),
+    activeSessions: state.sessions
+      .filter((s) => s.userId === userId)
+      .map((s) => ({ createdAt: s.createdAt, expiresAt: s.expiresAt }))
+  };
+  res.setHeader("Content-Disposition", 'attachment; filename="codecanic-data-export.json"');
+  json(res, 200, payload);
+}
+
+async function deleteAccount(req, res) {
+  const ctx = await currentUserContext(req);
+  if (!ctx) {
+    json(res, 401, { error: "Sign in to delete your account." });
+    return;
+  }
+  const body = await readBody(req);
+  const password = String(body.password || "");
+  const confirm = String(body.confirm || "").trim().toUpperCase();
+  if (!password) {
+    json(res, 422, { error: "Re-enter your password to confirm." });
+    return;
+  }
+  if (confirm !== "DELETE") {
+    json(res, 422, { error: 'Type "DELETE" exactly to confirm.' });
+    return;
+  }
+  const ok = await verifyPassword(password, ctx.user.passwordHash);
+  if (!ok) {
+    json(res, 401, { error: "Password is incorrect." });
+    return;
+  }
+
+  const userId = ctx.user.id;
+  await write(async (state) => {
+    const myMemberships = state.memberships.filter((m) => m.userId === userId);
+    const myOrgIds = myMemberships.map((m) => m.organizationId);
+    const ownerCounts = new Map();
+    for (const m of state.memberships) {
+      if (m.role !== "owner") continue;
+      ownerCounts.set(m.organizationId, (ownerCounts.get(m.organizationId) || 0) + 1);
+    }
+    const orgsToDelete = new Set();
+    for (const m of myMemberships) {
+      if (m.role === "owner" && ownerCounts.get(m.organizationId) === 1) {
+        orgsToDelete.add(m.organizationId);
+      }
+    }
+    return {
+      ...state,
+      users: state.users.filter((u) => u.id !== userId),
+      sessions: state.sessions.filter((s) => s.userId !== userId),
+      memberships: state.memberships.filter(
+        (m) => m.userId !== userId && !orgsToDelete.has(m.organizationId)
+      ),
+      organizations: state.organizations.filter((o) => !orgsToDelete.has(o.id)),
+      connectorCreds: state.connectorCreds.filter(
+        (entry) => entry.userId !== userId && !orgsToDelete.has(entry.organizationId)
+      )
+    };
+  });
+
+  res.setHeader("Set-Cookie", clearSessionCookie());
+  json(res, 200, { status: "account_deleted" });
+}
+
 async function me(req, res) {
   const context = await currentUserContext(req);
   if (!context) {
@@ -196,8 +327,18 @@ export default async function handler(req, res) {
     if (action === "login" && req.method === "POST") return await login(req, res);
     if (action === "logout" && req.method === "POST") return await logout(req, res);
     if (action === "me" && req.method === "GET") return await me(req, res);
+    if (action === "account" && (req.method === "DELETE" || req.method === "POST")) {
+      return await deleteAccount(req, res);
+    }
+    if (action === "export" && req.method === "GET") return await exportData(req, res);
     json(res, 404, { error: "Unknown auth action" });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    console.error("[auth error]", error);
+    const isClientError = /^(Request body|Provider|Apple|Railway|Password|Email|Enter|At least|Sign in|Type "DELETE"|Re-enter|You|CODECANIC_SESSION_SECRET)/.test(
+      error?.message || ""
+    );
+    json(res, isClientError ? 400 : 500, {
+      error: isClientError ? error.message : "Request failed."
+    });
   }
 }
