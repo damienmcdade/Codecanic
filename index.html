@@ -12,7 +12,6 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./styles.css" />
     <meta name="google-adsense-account" content="ca-pub-8731629548430880" />
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8731629548430880" crossorigin="anonymous"></script>
   </head>
   <body>
     <div class="shell">
@@ -60,6 +59,7 @@
             </div>
             <div class="account-legal-links">
               <button type="button" class="link-button" id="download-data">Download my data</button>
+              <button type="button" class="link-button" id="manage-cookies">Manage cookies</button>
               <button type="button" class="link-button" data-open-legal="privacy">Privacy</button>
               <button type="button" class="link-button" data-open-legal="terms">Terms</button>
             </div>
@@ -288,12 +288,16 @@
       </div>
     </div>
 
-    <div class="cookie-banner" id="cookie-banner" hidden>
-      <span>
-        Codecanic uses a signed session cookie when you sign in (required), localStorage for your dashboard layout, and Google AdSense to display sponsor ads (which may set its own cookies for ad delivery and measurement).
+    <div class="cookie-banner" id="cookie-banner" hidden role="dialog" aria-labelledby="cookie-banner-title" aria-describedby="cookie-banner-body">
+      <strong id="cookie-banner-title">Cookies and ad consent</strong>
+      <span id="cookie-banner-body">
+        Codecanic always uses a strictly-necessary session cookie when you sign in. To keep the service free we also load Google AdSense, which sets its own cookies for ad delivery, frequency capping, and (if you agree) personalisation. You can change your choice anytime via <em>Manage cookies</em> in your account card.
       </span>
-      <button class="primary" type="button" id="cookie-acknowledge">Got it</button>
-      <button type="button" class="link-button" data-open-legal="privacy">Privacy Policy</button>
+      <div class="cookie-actions">
+        <button class="ghost" type="button" id="cookie-reject">Essential only</button>
+        <button class="primary" type="button" id="cookie-accept">Accept all</button>
+      </div>
+      <button type="button" class="link-button" data-open-legal="privacy">Privacy &amp; cookies policy</button>
     </div>
 
     <div class="auth-modal delete-modal" id="delete-modal" hidden aria-hidden="true">

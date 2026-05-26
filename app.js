@@ -372,62 +372,171 @@ async function signOut() {
 const legalText = {
   privacy: `
     <h3>Privacy Policy</h3>
-    <p class="muted">Last updated: 2026-05-26.</p>
-    <p>Codecanic stores the personal data you give us so we can scan code, run repairs, and bill you. We are the data controller. Email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a> for any data subject request.</p>
-    <h4>What we collect</h4>
+    <p class="muted">Last updated: 2026-05-26. Version 2.</p>
+    <p>This policy describes what data Codecanic collects, why, where it goes, and how long we keep it. We are the data controller for the personal data described below. For any request — access, deletion, correction, complaint — email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>. We respond within 30 days as required by GDPR Article 12(3).</p>
+
+    <h4>1. What we collect and why</h4>
+    <table class="legal-table"><tbody>
+      <tr><th>Data</th><th>Purpose</th><th>Lawful basis (GDPR Art. 6)</th><th>Retention</th></tr>
+      <tr><td>Email, name, password hash (scrypt + salt)</td><td>Account creation, authentication, security</td><td>Contract (Art. 6(1)(b))</td><td>Until you delete your account (immediate, permanent)</td></tr>
+      <tr><td>Organizations and roles</td><td>Workspace ownership and access control</td><td>Contract</td><td>Until you delete account or leave the organization</td></tr>
+      <tr><td>OAuth access tokens (GitHub, Vercel, GitLab, Bitbucket) and manual tokens (Railway, Xcode)</td><td>Run scans and propose repairs on your authorization</td><td>Contract</td><td>Until you disconnect the provider, leave the org, or delete account; deletion is immediate and cascades</td></tr>
+      <tr><td>Scan reports and repair queue entries</td><td>Show you findings, let you approve fixes</td><td>Contract</td><td>Until you delete account or remove report</td></tr>
+      <tr><td>Signed session cookie <code>codecanic_session</code> (HttpOnly, Secure, SameSite=Strict)</td><td>Identify your authenticated browser</td><td>Contract — strictly necessary</td><td>14 days from issue, refreshed on activity</td></tr>
+      <tr><td>Acceptance timestamps for Terms + Privacy Policy</td><td>Demonstrate informed consent</td><td>Legal obligation (Art. 6(1)(c))</td><td>Life of the account + 6 years</td></tr>
+      <tr><td>Marketing opt-in flag</td><td>Honour your email preference (we do not currently send any marketing emails)</td><td>Consent (Art. 6(1)(a))</td><td>Until you delete account or opt out</td></tr>
+      <tr><td>HTTP request logs (IP, path, status, timestamp, user agent)</td><td>Abuse detection, debugging, security audit</td><td>Legitimate interest (Art. 6(1)(f))</td><td>30 days then rotated</td></tr>
+      <tr><td>Failed-login counters (IP + email)</td><td>Rate-limit credential stuffing</td><td>Legitimate interest</td><td>15 minutes after last failure</td></tr>
+    </tbody></table>
+
+    <h4>2. Cookies and similar technologies</h4>
+    <table class="legal-table"><tbody>
+      <tr><th>Cookie</th><th>Set by</th><th>Purpose</th><th>Lifetime</th></tr>
+      <tr><td><code>codecanic_session</code></td><td>Codecanic (1st party)</td><td>Authentication — strictly necessary, set only after sign-in</td><td>14 days</td></tr>
+      <tr><td><code>codecanic-cookie-consent</code> (localStorage)</td><td>Codecanic</td><td>Remember your consent choice on the cookie banner</td><td>Until you clear browser storage</td></tr>
+      <tr><td><code>codecanic-state</code> (localStorage)</td><td>Codecanic</td><td>Cache your dashboard layout, connector status, audit trail</td><td>Until you sign out, delete the account, or clear browser storage</td></tr>
+      <tr><td>Google AdSense cookies (<code>__gads</code>, <code>__gpi</code>, <code>IDE</code>, others)</td><td>Google (3rd party)</td><td>Ad delivery, frequency capping, fraud detection, optionally personalisation. <strong>Only set after you accept on the cookie banner.</strong></td><td>Up to 13 months (Google policy)</td></tr>
+    </tbody></table>
+    <p>If you select <strong>Essential only</strong> on the cookie banner the AdSense script is not loaded at all — no Google cookies are set, no requests are made to Google ad servers, and the sponsor slots remain blank.</p>
+
+    <h4>3. Advertising</h4>
+    <p>Codecanic is free for everyone and supported by ads served by Google AdSense (publisher <code>ca-pub-8731629548430880</code>). When you accept ad cookies, Google may receive your approximate location, device, IP-derived signals, and AdSense cookie identifiers to deliver and measure personalised or non-personalised ads. Manage your Google ad preferences at <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">adssettings.google.com</a>. Google's privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a>.</p>
+    <p>EEA / UK / Swiss users: when consent is required, Google's IAB TCF v2.2 prompt may also appear before personalised ads are served. You can withdraw consent at any time by clicking <strong>Manage cookies</strong> in your account card.</p>
+
+    <h4>4. Subprocessors (third parties that process data on our behalf)</h4>
+    <table class="legal-table"><tbody>
+      <tr><th>Subprocessor</th><th>Role</th><th>Region</th></tr>
+      <tr><td>Vercel Inc.</td><td>Static frontend hosting (codecanic.app) and edge proxy for <code>/api/*</code></td><td>USA</td></tr>
+      <tr><td>Railway Corp.</td><td>API hosting and persistent data store</td><td>USA (US West region)</td></tr>
+      <tr><td>Google LLC (AdSense)</td><td>Sponsor ad delivery — only after you opt in</td><td>USA</td></tr>
+      <tr><td>GitHub, GitLab, Bitbucket, Vercel, Railway, Apple Developer (when you connect them)</td><td>OAuth identity and the read scopes you grant for each scan</td><td>USA / EEA depending on provider</td></tr>
+    </tbody></table>
+
+    <h4>5. International data transfers</h4>
+    <p>Codecanic is hosted in the United States. If you access the service from the EEA, UK, or Switzerland, your personal data is transferred to the US. We rely on the European Commission Standard Contractual Clauses (Module 2, Controller-to-Processor) with each subprocessor named above, and on each subprocessor's published Data Processing Addendum. Copies are available on request to <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.</p>
+
+    <h4>6. Your rights</h4>
     <ul>
-      <li>Email, name, password hash (scrypt with random salt), and account creation timestamp.</li>
-      <li>Organizations you create or join, and your role in each.</li>
-      <li>Access tokens you connect (GitHub, Vercel, GitLab, Bitbucket, Railway, Xcode). These are stored only for the linked workspace and used to fulfil scans and repairs you request.</li>
-      <li>Scan reports and repair audit entries generated from your repositories.</li>
-      <li>Signed session cookie (<code>codecanic_session</code>) that identifies your browser session. Sent on requests to Codecanic only.</li>
-      <li>Server logs (IP address, request path, timestamps) retained for up to 30 days for security and abuse prevention.</li>
+      <li><strong>Access and portability (Art. 15 + 20):</strong> click <em>Download my data</em> in your account card. Format: JSON. Tokens are redacted to <code>***redacted***</code> for safety; if you need the original tokens, fetch them yourself from the provider before exporting.</li>
+      <li><strong>Erasure (Art. 17):</strong> click <em>Delete account</em>. Your user record, sessions, sole-owned organizations, and every connector credential are removed immediately and permanently. There are no soft-delete backups; nothing is retained after the action completes.</li>
+      <li><strong>Rectification (Art. 16):</strong> email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a> with corrections.</li>
+      <li><strong>Restriction / objection (Art. 18 + 21):</strong> email us. For processing based on legitimate interest you can object at any time.</li>
+      <li><strong>Consent withdrawal:</strong> click <em>Manage cookies</em> in your account card to switch ad consent off, or unsubscribe from any future marketing email we send.</li>
+      <li><strong>Lodge a complaint:</strong> you can complain to your local supervisory authority. In the EU, find yours at <a href="https://edpb.europa.eu/about-edpb/about-edpb/members_en" target="_blank" rel="noopener noreferrer">edpb.europa.eu</a>. In the UK, the ICO (<a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer">ico.org.uk</a>).</li>
     </ul>
-    <h4>Advertising</h4>
-    <p>Codecanic is free for everyone. To keep the lights on we display ads served by Google AdSense (publisher ID <code>ca-pub-8731629548430880</code>). Google may set cookies, read approximate location and device information, and use this data to serve and measure personalised or non-personalised ads. Manage your ad choices at <a href="https://adssettings.google.com" target="_blank" rel="noopener">adssettings.google.com</a>. EEA / UK / Swiss users see a Google-provided consent prompt before any non-essential cookie is set.</p>
-    <h4>What we do NOT do</h4>
+
+    <h4>7. California (CCPA / CPRA) notice</h4>
+    <p>If you are a California resident:</p>
     <ul>
-      <li>We do not sell your data.</li>
-      <li>We do not pass your connected provider tokens, repository content, or scan results to Google or any other ad partner.</li>
-      <li>We do not access provider data outside what is necessary to fulfil a scan or repair you requested.</li>
+      <li><strong>Categories collected</strong>: identifiers (email, IP), commercial info (organization), internet activity (request logs), inferences (none).</li>
+      <li><strong>"Sale" of personal information</strong>: we do not sell personal information.</li>
+      <li><strong>"Sharing" for cross-context behavioural advertising</strong>: when you accept ad cookies, we share advertising identifiers with Google AdSense. You can opt out at any time by selecting <em>Essential only</em> on the cookie banner or by clicking <em>Manage cookies</em>. We treat that signal as your <strong>Do Not Sell or Share My Personal Information</strong> request.</li>
+      <li><strong>Sensitive PII</strong>: we do not collect sensitive personal information as defined by CCPA.</li>
+      <li><strong>Right to limit use</strong>: not applicable because we do not use sensitive PII.</li>
+      <li><strong>Authorised agent</strong>: you may designate one in writing.</li>
     </ul>
-    <h4>Your rights (GDPR / CCPA / equivalent)</h4>
+
+    <h4>8. Security</h4>
     <ul>
-      <li><strong>Access / portability:</strong> click "Download my data" in your account card.</li>
-      <li><strong>Deletion:</strong> click "Delete account" to permanently erase your record and sole-owned organizations.</li>
-      <li><strong>Rectification:</strong> email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a> for name/email corrections.</li>
-      <li><strong>Opt out of marketing:</strong> opt-in only — uncheck the marketing box at signup or email us.</li>
+      <li>TLS 1.2+ enforced via HSTS preload on every connection.</li>
+      <li>Passwords: scrypt (CPU-hard) with per-user 16-byte random salt. Plaintext passwords never stored.</li>
+      <li>Provider access tokens: AES-256-GCM encrypted at rest with a key derived from a 64-character server secret via scrypt KDF.</li>
+      <li>Sessions: HMAC-SHA256 signed cookie, <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite=Strict</code>, max 5 concurrent per user.</li>
+      <li>Anti-CSRF: every state-changing request requires a same-origin Origin header.</li>
+      <li>Anti-brute-force: 15-minute lockout after 5 failed login attempts per IP+email.</li>
+      <li>Password policy: minimum 15 characters with uppercase, lowercase, digit, and symbol (DISA STIG aligned).</li>
+      <li>Strict Content-Security-Policy with per-request script nonce. X-Frame-Options DENY. No iframes embed Codecanic.</li>
     </ul>
-    <h4>Security</h4>
-    <p>Sessions are signed with HMAC-SHA256. Cookies use <code>HttpOnly</code>, <code>Secure</code> (in production), and <code>SameSite=Strict</code>. Provider tokens are stored encrypted at rest. Failed login attempts trigger a 15-minute lockout after 5 attempts. TLS is enforced on all connections.</p>
-    <h4>Children</h4>
-    <p>Codecanic is not directed to children under 16. We require an age confirmation at signup and will delete any account we discover belongs to a child under 16.</p>
+    <p><strong>Breach notification</strong>: if we discover a personal data breach we will notify the relevant supervisory authority within 72 hours (GDPR Art. 33). If the breach is likely to result in high risk to your rights or freedoms we will notify affected users without undue delay (Art. 34).</p>
+
+    <h4>9. Children</h4>
+    <p>Codecanic is not directed to children under 16. We require explicit age confirmation at signup. If we learn that an account belongs to a child under 16 we will delete it and remove all associated data. To report such an account, email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.</p>
+
+    <h4>10. Automated decision-making</h4>
+    <p>Scan findings and proposed repairs are produced by deterministic rules and pattern matchers. We do not currently use machine-learning models that profile you or make automated decisions producing legal effects. If that changes we will update this policy and notify you.</p>
+
+    <h4>11. Accessibility</h4>
+    <p>Codecanic aims to meet WCAG 2.1 AA where practical. The dashboard supports keyboard navigation, screen-reader-compatible ARIA labels on interactive controls, sufficient colour contrast, and respects <code>prefers-reduced-motion</code> for animations. We have not yet completed a formal accessibility audit. Report accessibility barriers to <a href="mailto:accessibility@codecanic.app">accessibility@codecanic.app</a>; we will acknowledge within 5 business days.</p>
+
+    <h4>12. Changes</h4>
+    <p>If we make material changes to this policy we will display a banner on first sign-in after the change and update the "Last updated" date above. Continued use after the effective date constitutes acceptance.</p>
+
+    <h4>13. Contact</h4>
+    <p>Privacy / data requests: <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.<br>Accessibility: <a href="mailto:accessibility@codecanic.app">accessibility@codecanic.app</a>.<br>Security disclosure: <a href="mailto:security@codecanic.app">security@codecanic.app</a>.<br>Trust + safety: <a href="mailto:abuse@codecanic.app">abuse@codecanic.app</a>.</p>
   `,
   terms: `
     <h3>Terms of Service</h3>
-    <p class="muted">Last updated: 2026-05-26.</p>
-    <p>By creating an account you agree to these terms. If you do not agree, do not use Codecanic.</p>
-    <h4>Service</h4>
-    <p>Codecanic scans repositories and infrastructure you connect to it and proposes repairs for your review. You retain ownership of your code, your provider accounts, and any data you submit.</p>
-    <h4>Acceptable use</h4>
+    <p class="muted">Last updated: 2026-05-26. Version 2.</p>
+    <p>By creating an account or using Codecanic ("the Service") you agree to these terms. If you do not agree, do not use the Service.</p>
+
+    <h4>1. The Service</h4>
+    <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The Service is free of charge and supported by sponsor advertising. You retain ownership of your code, your provider accounts, and any data you submit.</p>
+
+    <h4>2. Eligibility</h4>
+    <p>You must be at least 16 years old and able to enter a binding contract. You may use the Service on behalf of a company; if so, you represent that you have authority to bind that company.</p>
+
+    <h4>3. Your account</h4>
+    <p>You are responsible for keeping your password secure and for everything that happens under your account. Notify us at <a href="mailto:security@codecanic.app">security@codecanic.app</a> immediately if you suspect unauthorized access.</p>
+
+    <h4>4. Acceptable Use Policy (AUP)</h4>
+    <p>You agree NOT to:</p>
     <ul>
-      <li>Connect only providers you are authorised to access.</li>
-      <li>Do not use Codecanic to scan or modify systems you do not own or have written permission to test.</li>
-      <li>Do not attempt to reverse engineer, abuse, or overload the service.</li>
-      <li>Do not upload illegal content or use Codecanic to violate any applicable law.</li>
+      <li>Connect any provider account you are not authorized to access.</li>
+      <li>Use the Service to scan, modify, or generate repairs for systems or repositories you do not own or do not have explicit written permission to test.</li>
+      <li>Reverse engineer, disassemble, decompile, or attempt to extract source code from the Service except as permitted by applicable law.</li>
+      <li>Overload, flood, spam, denial-of-service, or otherwise interfere with the Service or other users.</li>
+      <li>Use the Service to develop, train, or evaluate a competing product without our written permission.</li>
+      <li>Upload, scan, or generate repairs for malicious code, malware, stalkerware, illegal content (CSAM, copyrighted material you do not own, sanctioned-party content), or content that infringes third-party rights.</li>
+      <li>Bypass the consent or paywall mechanisms or attempt to access another user's data.</li>
+      <li>Use the Service in violation of any applicable export control, sanctions, or trade law (including OFAC and EU sanctions).</li>
     </ul>
-    <h4>Repairs and pull requests</h4>
-    <p>Codecanic proposes repairs but never merges them. You approve the segments you want before any change is queued. You are responsible for reviewing the code Codecanic suggests before merging it into production.</p>
-    <h4>Cost</h4>
-    <p>Codecanic is free for everyone. The service is supported by ads shown via Google AdSense. There are no paid plans, no card on file, and no subscription to cancel.</p>
-    <h4>Termination</h4>
-    <p>You can delete your account at any time. We may suspend accounts that violate these terms or applicable law.</p>
-    <h4>Warranty + liability</h4>
-    <p>Codecanic is provided free of charge and "as is" without warranties. To the extent permitted by law, Codecanic's total liability for any claim is limited to USD 100. Codecanic is not liable for indirect or consequential damages.</p>
-    <h4>Governing law</h4>
-    <p>These terms are governed by the laws applicable to where Codecanic is incorporated. Disputes will be resolved in the courts of that jurisdiction.</p>
-    <h4>Changes</h4>
-    <p>If we materially change these terms we will notify you by email and via this dashboard.</p>
+    <p>Violations may result in immediate suspension and, where appropriate, referral to law enforcement.</p>
+
+    <h4>5. Repairs and pull requests</h4>
+    <p>Codecanic proposes repairs but does NOT merge them automatically. You approve the segments you want, and Codecanic prepares a draft pull request on your behalf using your authorized provider tokens. You are responsible for reviewing the proposed code before merging into production. Codecanic makes no representation that proposed repairs are correct, complete, or fit for any particular purpose.</p>
+
+    <h4>6. Your content</h4>
+    <p>You grant Codecanic a worldwide, non-exclusive, royalty-free, terminable licence to access, copy, scan, and process the repository content and metadata you connect, solely to provide the Service to you. You may revoke this licence at any time by disconnecting the relevant connector or deleting your account, after which we cease the corresponding processing within 30 days (in practice, immediately for connector disconnect / account delete).</p>
+
+    <h4>7. Intellectual property and DMCA</h4>
+    <p>Codecanic and the Service are owned by us and protected by IP laws. The trademarks, logos, and service marks displayed on Codecanic are our property or the property of their respective owners and may not be used without permission.</p>
+    <p><strong>DMCA — Digital Millennium Copyright Act (US 17 U.S.C. § 512)</strong>: if you believe content on Codecanic infringes your copyright, send a notice to our designated agent at <a href="mailto:dmca@codecanic.app">dmca@codecanic.app</a> including:</p>
+    <ol>
+      <li>Your physical or electronic signature.</li>
+      <li>Identification of the copyrighted work claimed to have been infringed.</li>
+      <li>Identification of the allegedly infringing material and where it is located on the Service.</li>
+      <li>Your contact information (address, phone, email).</li>
+      <li>A statement that you have a good-faith belief that the use is not authorized.</li>
+      <li>A statement, under penalty of perjury, that the notice is accurate and you are authorized to act on behalf of the owner.</li>
+    </ol>
+    <p>Counter-notices may be sent to the same address. We may terminate repeat infringers per our DMCA policy.</p>
+
+    <h4>8. Cost and ads</h4>
+    <p>The Service is free of charge. We do not collect payment information. The Service is supported by ads delivered via Google AdSense; see the Privacy Policy for details and your consent controls.</p>
+
+    <h4>9. Suspension and termination</h4>
+    <p>You may delete your account at any time via the dashboard. We may suspend or terminate your access (with or without notice) if you violate these terms, applicable law, or our AUP. On termination, sections 7, 9, 10, 11, 12, 13, and 14 survive.</p>
+
+    <h4>10. Disclaimers</h4>
+    <p>THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, OR NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, SECURE, OR FREE OF ERRORS, OR THAT SCAN FINDINGS OR PROPOSED REPAIRS ARE CORRECT OR COMPLETE.</p>
+
+    <h4>11. Limitation of liability</h4>
+    <p>TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL CODECANIC'S TOTAL AGGREGATE LIABILITY FOR ANY CLAIM ARISING FROM OR RELATING TO THE SERVICE EXCEED ONE HUNDRED US DOLLARS (USD 100). WE ARE NOT LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, GOODWILL, OR BUSINESS INTERRUPTION, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. Some jurisdictions do not allow these limitations; in those jurisdictions our liability is limited to the smallest amount permitted by law.</p>
+
+    <h4>12. Indemnification</h4>
+    <p>You agree to indemnify and hold Codecanic harmless from any claim, demand, loss, or expense (including reasonable legal fees) arising from your violation of these terms, your AUP violations, or your infringement of any third-party right (including IP rights) through your use of the Service.</p>
+
+    <h4>13. Governing law and dispute resolution</h4>
+    <p>These terms are governed by the laws of the jurisdiction in which Codecanic is principally operated, without regard to its conflict-of-law rules. Before bringing any claim, you agree to first contact us at <a href="mailto:legal@codecanic.app">legal@codecanic.app</a> and attempt good-faith resolution for at least 30 days. If unresolved, any dispute will be brought in the small-claims court of competent jurisdiction or, at either party's election, before a neutral arbitrator under the rules of a recognised arbitration body. Class actions are waived to the extent permitted by law. Nothing in this section prevents you from exercising any non-waivable consumer rights under your local law.</p>
+
+    <h4>14. Severability + entire agreement</h4>
+    <p>If any provision of these terms is held unenforceable, the remaining provisions remain in force. These terms (together with the Privacy Policy) constitute the entire agreement between you and Codecanic regarding the Service and supersede any prior agreements.</p>
+
+    <h4>15. Force majeure</h4>
+    <p>We are not liable for failure or delay caused by events beyond reasonable control — natural disasters, war, terrorism, civil disturbance, pandemic, government action, infrastructure outage at a subprocessor, or denial-of-service attack.</p>
+
+    <h4>16. Changes</h4>
+    <p>If we make material changes to these terms we will display a banner on first sign-in after the change and update the "Last updated" date. Continued use after the effective date constitutes acceptance. If you do not accept the changes, stop using the Service and delete your account.</p>
   `
 };
 
@@ -470,7 +579,36 @@ async function downloadMyData() {
   }
 }
 
+const COOKIE_CONSENT_KEY = "codecanic-cookie-consent";
+const ADSENSE_LOADER_URL = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8731629548430880";
+
+function getConsent() {
+  try {
+    return localStorage.getItem(COOKIE_CONSENT_KEY) || "pending";
+  } catch {
+    return "pending";
+  }
+}
+
+function setConsent(value) {
+  try {
+    localStorage.setItem(COOKIE_CONSENT_KEY, value);
+  } catch {}
+}
+
+function loadAdSenseScript() {
+  if (document.querySelector('script[data-codecanic-ads="1"]')) return;
+  const s = document.createElement("script");
+  s.src = ADSENSE_LOADER_URL;
+  s.async = true;
+  s.crossOrigin = "anonymous";
+  s.dataset.codecanicAds = "1";
+  s.onload = () => loadAdSlots();
+  document.head.appendChild(s);
+}
+
 function loadAdSlots() {
+  if (getConsent() !== "accepted") return;
   const slots = document.querySelectorAll("ins.adsbygoogle");
   for (const slot of slots) {
     if (slot.dataset.loaded === "1") continue;
@@ -485,21 +623,38 @@ function loadAdSlots() {
   }
 }
 
-function maybeShowCookieBanner() {
-  try {
-    if (localStorage.getItem("codecanic-cookie-ack") === "1") return;
-  } catch {
-    return;
+function applyConsent(consent) {
+  setConsent(consent);
+  document.body.classList.toggle("consent-accepted", consent === "accepted");
+  document.body.classList.toggle("consent-essential", consent === "essential");
+  hideCookieBanner();
+  if (consent === "accepted") {
+    loadAdSenseScript();
   }
-  const banner = document.querySelector("#cookie-banner");
-  if (banner) banner.hidden = false;
 }
 
-function ackCookieBanner() {
-  try {
-    localStorage.setItem("codecanic-cookie-ack", "1");
-  } catch {}
-  document.querySelector("#cookie-banner").hidden = true;
+function maybeShowCookieBanner() {
+  const consent = getConsent();
+  document.body.classList.toggle("consent-accepted", consent === "accepted");
+  document.body.classList.toggle("consent-essential", consent === "essential");
+  if (consent === "accepted") {
+    loadAdSenseScript();
+    return;
+  }
+  if (consent === "pending") {
+    const banner = document.querySelector("#cookie-banner");
+    if (banner) banner.hidden = false;
+  }
+}
+
+function hideCookieBanner() {
+  const banner = document.querySelector("#cookie-banner");
+  if (banner) banner.hidden = true;
+}
+
+function showCookieBanner() {
+  const banner = document.querySelector("#cookie-banner");
+  if (banner) banner.hidden = false;
 }
 
 function openDeleteAccountModal() {
@@ -1190,7 +1345,9 @@ document.addEventListener("click", (event) => {
   if (target.dataset.legalTab) setLegalTab(target.dataset.legalTab);
   if (target.id === "legal-close") closeLegalModal();
   if (target.id === "download-data") downloadMyData();
-  if (target.id === "cookie-acknowledge") ackCookieBanner();
+  if (target.id === "cookie-accept") applyConsent("accepted");
+  if (target.id === "cookie-reject") applyConsent("essential");
+  if (target.id === "manage-cookies") showCookieBanner();
 
   if (target.id === "run-scan") runScan();
   if (target.id === "export-report") exportReport();

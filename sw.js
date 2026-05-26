@@ -1,4 +1,4 @@
-const CACHE_NAME = "codecanic-v5";
+const CACHE_NAME = "codecanic-v6";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
