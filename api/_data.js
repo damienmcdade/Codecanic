@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 
 const dataDir = process.env.CODECANIC_DATA_DIR || join(process.cwd(), ".data");
 const dataFile = join(dataDir, "codecanic.json");
-const empty = { users: [], organizations: [], memberships: [], sessions: [], connectorCreds: [] };
+const empty = { users: [], organizations: [], memberships: [], sessions: [], connectorCreds: [], reports: [] };
 
 let writeChain = Promise.resolve();
 let cache = null;

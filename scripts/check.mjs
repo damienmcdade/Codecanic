@@ -17,6 +17,7 @@ const requiredFiles = [
   "api/_auth.js",
   "api/_data.js",
   "api/_scanner.js",
+  "api/_repair.js",
   "api/auth.js",
   "api/orgs.js",
   "api/oauth.js",
@@ -130,13 +131,15 @@ if (scanNoUrl.res.statusCode !== 400) {
   throw new Error(`Scan API should reject a missing URL with 400 (got ${scanNoUrl.res.statusCode}).`);
 }
 
+// Repair is wired to the real engine (clone + PR); its patch logic is proven
+// offline by scripts/repair.test.mjs. Here we assert the no-network contract:
+// a repair request without a known reportId is a clean 400.
 const repair = await authedInvoke(repairHandler, "POST", {
-  findingIds: ["secret:aws-access-key:config.js:12"],
-  tier: "Pro"
+  findingIds: ["secret:aws-access-key:config.js:12"]
 }, "/api/repair");
 
-if (!repair.data?.branchName || repair.data.status !== "queued") {
-  throw new Error("Repair API did not queue a repair job.");
+if (repair.res.statusCode !== 400) {
+  throw new Error(`Repair API should reject a missing reportId with 400 (got ${repair.res.statusCode}).`);
 }
 
 await rm(tempDir, { recursive: true, force: true });

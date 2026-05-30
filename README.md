@@ -41,7 +41,18 @@ npm run dev
 - `GET /api/oauth/status` lists provider connections for the active organization.
 - `GET /api/health` returns deployment identity for Vercel/Railway sync checks.
 - `POST /api/scan` runs the **real v1 scan engine** against `sourceUrl` (an `https://github.com|gitlab.com|bitbucket.org/owner/repo` URL): it shallow-clones the repo (using the organization's connected provider token for private repos), then returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query. Private repos with no connected provider return `422` (not fabricated findings); unsupported hosts/URLs return `400`.
-- `POST /api/repair` queues approved findings (auth-gated). **Note: repair is still a stub** — it returns a branch name and next-step plan but does not yet generate patches or open pull requests.
+- `POST /api/repair` takes a `reportId` (from a prior scan) + approved `findingIds`, and **opens a real GitHub pull request**: it clones the repo with the org's GitHub token, applies deterministic safe patches, commits, pushes a branch, and creates the PR. Findings that can't be auto-fixed safely are listed in the PR body as manual action items. Returns `422` (no fabricated PR) when GitHub isn't connected or the repo isn't on GitHub; `404` for an unknown report.
+
+### Repair engine (v1)
+
+`api/_repair.js` turns approved findings into patches. Auto-fixed safely:
+
+- **Vulnerable npm deps** — direct deps bumped to the OSV-reported fixed version in `package.json`; transitive deps pinned via `overrides` (the PR body notes that the lockfile must be refreshed with `npm install`).
+- **TypeScript `strict`** — flipped to `true`.
+- **Committed `.env`** — added to `.gitignore` and removed from the tree.
+- **Missing CI** — a baseline GitHub Actions workflow is added.
+
+Left as **manual action items** (never auto-edited): secrets in code, committed keys, `.npmrc` tokens, missing lockfile — because auto-editing these risks breakage or mishandling credentials. Patch planning/application is proven by `npm run test:repair`.
 
 ### Scan engine (v1)
 
@@ -66,7 +77,8 @@ Copy `.env.example` into your deployment environment and fill in the provider cr
 
 1. ~~Add authentication and organization workspaces.~~ ✓ Session cookies + JSON-file user/org/membership store at `${CODECANIC_DATA_DIR}/codecanic.json`.
 2. ~~Implement real connector OAuth flows.~~ ✓ Signed-state authorization URL → `/api/oauth/callback` → provider-specific token exchange (GitHub, Vercel, GitLab, Bitbucket); per-org credentials persisted.
-3. ~~Build a real scan engine.~~ ✓ v1 clones the repo and runs real dependency SCA (OSV.dev), secret scanning, and hygiene checks (`api/_scanner.js`). Repair remains a stub.
-4. Make repair real: generate patches, rerun validation, and open pull requests with approval/audit controls.
-5. Add async scan/repair job queues (scans are currently synchronous per request).
+3. ~~Build a real scan engine.~~ ✓ v1 clones the repo and runs real dependency SCA (OSV.dev), secret scanning, and hygiene checks (`api/_scanner.js`).
+4. ~~Make repair real.~~ ✓ v1 generates patches and opens a real GitHub pull request, with manual items in the PR body (`api/_repair.js`). Next: rerun validation/tests on the patched branch and add CI-based merge-confidence before proposing.
+5. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
+6. Migrate the JSON-file datastore to managed Postgres (durability + multi-replica safety).
 5. Add mobile packaging with Capacitor for iOS and Android.

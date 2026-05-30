@@ -1,8 +1,10 @@
 import { json, planFor, readBody, resolveOrgContext } from "./_lib.js";
-import { read } from "./_data.js";
+import { read, write } from "./_data.js";
 import { decryptSecret } from "./_crypto.js";
 import { scanRepository, validateGitUrl } from "./_scanner.js";
 import { randomUUID } from "node:crypto";
+
+const MAX_REPORTS_PER_ORG = 20;
 
 // Map a git host to the connector provider whose token can clone it.
 const HOST_PROVIDER = {
@@ -98,6 +100,23 @@ export default async function handler(req, res) {
       summary: result.summary,
       findings: result.findings
     };
+
+    // Persist the report so an approved repair can load the findings later.
+    // Keep only the most recent reports per org to bound storage.
+    await write(async (state) => {
+      const record = {
+        id: job.id,
+        organizationId: context.organization.id,
+        sourceUrl: job.sourceUrl,
+        createdAt: job.createdAt,
+        summary: job.summary,
+        findings: job.findings
+      };
+      const others = state.reports.filter((r) => r.organizationId !== context.organization.id);
+      const mine = [record, ...state.reports.filter((r) => r.organizationId === context.organization.id)]
+        .slice(0, MAX_REPORTS_PER_ORG);
+      return { ...state, reports: [...mine, ...others] };
+    });
 
     json(res, 200, job);
   } catch (error) {

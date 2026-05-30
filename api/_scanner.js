@@ -333,6 +333,49 @@ function parseCvssScore(vector) {
   return null; // full CVSS vector parsing is out of scope for v1
 }
 
+// Minimal semver compare on major.minor.patch (ignores pre-release ordering).
+export function semverCmp(a, b) {
+  const pa = String(a).replace(/^[^\d]*/, "").split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).replace(/^[^\d]*/, "").split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+}
+
+// From an OSV vuln, find the lowest "fixed" version for the given package that
+// is greater than the currently-installed version.
+export function extractFixedVersion(vuln, pkg) {
+  const affected = Array.isArray(vuln?.affected) ? vuln.affected : [];
+  const fixes = [];
+  for (const a of affected) {
+    if (a?.package?.name !== pkg.name) continue;
+    for (const range of a.ranges || []) {
+      for (const ev of range.events || []) {
+        if (ev.fixed) fixes.push(ev.fixed);
+      }
+    }
+  }
+  const higher = fixes.filter((f) => semverCmp(f, pkg.version) > 0).sort(semverCmp);
+  return higher[0] || fixes.sort(semverCmp).pop() || null;
+}
+
+async function readDirectDeps(files) {
+  const direct = new Set();
+  for (const file of files) {
+    if (basename(file).toLowerCase() !== "package.json") continue;
+    const text = await readText(file);
+    if (!text) continue;
+    try {
+      const json = JSON.parse(text);
+      for (const field of ["dependencies", "devDependencies", "optionalDependencies"]) {
+        for (const name of Object.keys(json[field] || {})) direct.add(name);
+      }
+    } catch {}
+  }
+  return direct;
+}
+
 async function analyzeDependencies(root, files) {
   const packages = await collectPackages(root, files);
   if (!packages.length) return { findings: [], scanned: { packages: 0, ecosystems: [] }, osv: "skipped" };
@@ -353,6 +396,8 @@ async function analyzeDependencies(root, files) {
     const vulns = r?.vulns || [];
     for (const v of vulns) if (v?.id && !vulnIds.has(v.id)) vulnIds.set(v.id, queried[i]);
   });
+
+  const directNames = await readDirectDeps(files);
 
   // Fetch details for vulnerable packages (bounded).
   const findings = [];
@@ -377,6 +422,8 @@ async function analyzeDependencies(root, files) {
     const aliases = Array.isArray(vuln.aliases) ? vuln.aliases : [];
     const cve = aliases.find((a) => /^CVE-/.test(a)) || vuln.id;
     const summary = (vuln.summary || vuln.details || "Known vulnerability").split("\n")[0].slice(0, 200);
+    const fixedVersion = extractFixedVersion(vuln, pkg);
+    const direct = directNames.has(pkg.name);
     findings.push({
       id: `dep:${pkg.name}@${pkg.version}:${vuln.id}`,
       title: `Vulnerable dependency: ${pkg.name}@${pkg.version} (${cve})`,
@@ -388,8 +435,14 @@ async function analyzeDependencies(root, files) {
       target: `${pkg.ecosystem} · ${pkg.name}@${pkg.version}`,
       detail: summary,
       reference: `https://osv.dev/vulnerability/${vuln.id}`,
-      fix: "Upgrade to a patched version, regenerate the lockfile, and rerun tests.",
-      patchPreview: `Bump ${pkg.name} above the vulnerable range and refresh the lockfile.`
+      fix: fixedVersion
+        ? `Upgrade ${pkg.name} to ${fixedVersion} or later, regenerate the lockfile, and rerun tests.`
+        : "Upgrade to a patched version, regenerate the lockfile, and rerun tests.",
+      patchPreview: fixedVersion
+        ? `Bump ${pkg.name} to ^${fixedVersion}.`
+        : `Bump ${pkg.name} above the vulnerable range.`,
+      // Structured data the repair engine consumes:
+      remediation: fixedVersion ? { kind: direct ? "npm-bump-direct" : "npm-override", ecosystem: pkg.ecosystem, packageName: pkg.name, currentVersion: pkg.version, fixedVersion } : null
     });
   }
 
@@ -503,7 +556,8 @@ async function analyzeHygiene(root, files) {
     if (base === ".env" || /^\.env\.(?!example|sample|template)/.test(base)) {
       findings.push(hyg("hygiene:committed-env", "Environment file committed to source control", "critical", rel,
         "A .env file is tracked in git. It typically holds live credentials.",
-        "Remove it from the repo, add it to .gitignore, and rotate any exposed values."));
+        "Remove it from the repo, add it to .gitignore, and rotate any exposed values.",
+        { kind: "gitignore-env", file: rel }));
     } else if (/\.(pem|key|p12|pfx|keystore|jks)$/.test(base) || base === "id_rsa" || base === "id_dsa") {
       findings.push(hyg("hygiene:key-file", "Private key / keystore committed", "critical", rel,
         "A private key or keystore file is tracked in git.",
@@ -529,7 +583,8 @@ async function analyzeHygiene(root, files) {
       if (co.strict === false || (co.strict === undefined && co.noImplicitAny === false)) {
         findings.push(hyg("hygiene:ts-strict", "TypeScript strict mode disabled", "warning", relative(root, f).replace(/\\/g, "/"),
           "strict type-checking is off, which lets type-unsafe code through.",
-          "Enable \"strict\": true and fix the surfaced type errors."));
+          "Enable \"strict\": true and fix the surfaced type errors.",
+          { kind: "tsconfig-strict", file: relative(root, f).replace(/\\/g, "/") }));
       }
     }
   }
@@ -547,19 +602,21 @@ async function analyzeHygiene(root, files) {
   if ((has(/(^|\/)package\.json$/) || has(/(^|\/)requirements\.txt$/)) && !hasCI) {
     findings.push(hyg("hygiene:no-ci", "No CI pipeline detected", "warning", "(repository root)",
       "No CI workflow was found, so changes can merge without automated build/test/scan.",
-      "Add a CI workflow that runs build, tests, and security scans on every PR."));
+      "Add a CI workflow that runs build, tests, and security scans on every PR.",
+      { kind: "add-ci" }));
   }
 
   return { findings };
 }
 
-function hyg(id, title, severity, target, detail, fix) {
+function hyg(id, title, severity, target, detail, fix, remediation = null) {
   return {
     id, title, type: severity === "critical" ? "security" : "quality",
     category: "hygiene",
     severity, severityLabel: severity === "critical" ? "critical" : "moderate",
     confidence: 88, target, detail, fix,
-    patchPreview: fix
+    patchPreview: fix,
+    remediation
   };
 }
 

@@ -218,9 +218,11 @@ try {
     const badProto = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { sourceUrl: "http://github.com/o/r" } });
     ok("scan of non-https URL → 400", badProto.status === 400, `status=${badProto.status}`);
 
-    // Live scan of a real public repo (needs git + network). Skip cleanly if offline.
+    // Live scan of a real public repo with known vulns (needs git + network).
+    // Skip cleanly if offline; otherwise capture a report + finding to drive repair.
+    let reportId, realFindingId;
     const scan = await call("POST", `/api/scan?organization=${orgSlug}`, {
-      body: { sourceUrl: "https://github.com/sindresorhus/slugify", scanDepth: "full" }
+      body: { sourceUrl: "https://github.com/jquery/jquery", scanDepth: "full" }
     });
     if (scan.status === 200) {
       ok("live scan → real-v1 engine report", scan.json?.engine === "real-v1", `engine=${scan.json?.engine}`);
@@ -228,20 +230,34 @@ try {
       ok("scan summary has numeric counts", typeof scan.json?.summary?.critical === "number" && typeof scan.json?.summary?.total === "number");
       ok("scan reports the resolved repository + commit", !!scan.json?.repository?.commit, `repo=${JSON.stringify(scan.json?.repository)}`);
       ok("scan reports what it actually walked", typeof scan.json?.scanned?.filesWalked === "number");
-      ok("findings (if any) carry severity+target", (scan.json?.findings || []).every((f) => f.severity && f.target));
+      ok("findings carry severity+target", (scan.json?.findings || []).every((f) => f.severity && f.target));
+      reportId = scan.json?.id;
+      realFindingId = scan.json?.findings?.[0]?.id;
     } else if (scan.status === 422 || scan.status === 502) {
       console.log(`  ⊘ SKIP live scan — repo unreachable in this env (status=${scan.status}: ${scan.json?.error || ""})`);
     } else {
       ok("live scan returned a usable status", false, `unexpected status=${scan.status} ${scan.text.slice(0,100)}`);
     }
 
-    // Repair contract (still a stub; decoupled from scan output).
-    const repair = await call("POST", `/api/repair?organization=${orgSlug}`, {
-      body: { findingIds: ["secret:aws-access-key:config.js:12"] }
-    });
-    ok("POST /api/repair → queued + branch", repair.status === 200 && repair.json?.status === "queued" && !!repair.json?.branchName, `status=${repair.status} ${repair.text.slice(0,80)}`);
+    // Repair contract (REAL engine: opens a GitHub PR with a connected token).
     const empty = await call("POST", `/api/repair?organization=${orgSlug}`, { body: { findingIds: [] } });
-    ok("repair with no findings → 400", empty.status === 400);
+    ok("repair with no findings → 400", empty.status === 400, `status=${empty.status}`);
+    const noReport = await call("POST", `/api/repair?organization=${orgSlug}`, { body: { findingIds: ["x"] } });
+    ok("repair without reportId → 400", noReport.status === 400, `status=${noReport.status}`);
+    const badReport = await call("POST", `/api/repair?organization=${orgSlug}`, { body: { findingIds: ["x"], reportId: "nope" } });
+    ok("repair with unknown reportId → 404", badReport.status === 404, `status=${badReport.status}`);
+
+    if (reportId && realFindingId) {
+      // Real path: report exists + finding exists, but no GitHub provider is
+      // connected in the test org → engine must refuse with a clear 422, NOT fake a PR.
+      const repair = await call("POST", `/api/repair?organization=${orgSlug}`, {
+        body: { reportId, findingIds: [realFindingId] }
+      });
+      ok("repair without connected GitHub → 422 (no fake PR)", repair.status === 422, `status=${repair.status} ${repair.text.slice(0,90)}`);
+      ok("422 explains how to connect provider", /connect github/i.test(repair.json?.error || ""), `err=${repair.json?.error}`);
+    } else {
+      console.log("  ⊘ SKIP real repair path — no live report (offline)");
+    }
   }
 
   // 12. unauth scan -------------------------------------------------------
