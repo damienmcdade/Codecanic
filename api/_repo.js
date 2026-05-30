@@ -278,3 +278,70 @@ export async function consumeAuthToken(kind, tokenHash) {
 export async function deleteUserSessions(userId) {
   await q("DELETE FROM sessions WHERE user_id=$1", [userId]);
 }
+
+// --- background job queue --------------------------------------------------
+const mapJob = (r) => r && {
+  id: r.id, type: r.type, status: r.status, organizationId: r.organization_id, userId: r.user_id,
+  payload: r.payload, result: r.result, error: r.error, attempts: r.attempts,
+  createdAt: iso(r.created_at), startedAt: iso(r.started_at), finishedAt: iso(r.finished_at)
+};
+
+export async function enqueueJob({ type, organizationId, userId, payload }) {
+  const id = randomUUID();
+  const rows = await q(
+    `INSERT INTO jobs (id,type,organization_id,user_id,payload,status) VALUES ($1,$2,$3,$4,$5::jsonb,'queued')
+     RETURNING id, type, status, created_at`,
+    [id, type, organizationId, userId || null, JSON.stringify(payload ?? {})]
+  );
+  return { id: rows[0].id, type: rows[0].type, status: rows[0].status, createdAt: iso(rows[0].created_at) };
+}
+
+// Atomically claim the oldest queued job. FOR UPDATE SKIP LOCKED makes this
+// safe across concurrent workers / replicas (no job is processed twice).
+export async function claimNextJob() {
+  return withTx(async (query) => {
+    const row = (await query(
+      `SELECT * FROM jobs WHERE status='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`
+    ))[0];
+    if (!row) return null;
+    await query("UPDATE jobs SET status='running', started_at=now(), attempts=attempts+1 WHERE id=$1", [row.id]);
+    const job = mapJob(row);
+    job.status = "running";
+    job.attempts = (row.attempts || 0) + 1;
+    return job;
+  });
+}
+
+export async function completeJob(id, result) {
+  await q("UPDATE jobs SET status='succeeded', result=$2::jsonb, finished_at=now() WHERE id=$1",
+    [id, JSON.stringify(result ?? null)]);
+}
+
+export async function failJob(id, error) {
+  await q("UPDATE jobs SET status='failed', error=$2, finished_at=now() WHERE id=$1",
+    [id, String(error).slice(0, 2000)]);
+}
+
+// Re-queue jobs left 'running' by a crashed/restarted worker (or stuck too long).
+export async function requeueStaleJobs(staleMs) {
+  const cutoff = new Date(Date.now() - staleMs).toISOString();
+  const rows = await q(
+    "UPDATE jobs SET status='queued', started_at=NULL WHERE status='running' AND started_at < $1 RETURNING id",
+    [cutoff]
+  );
+  return rows.length;
+}
+
+export async function getJob(id, organizationId) {
+  if (!isUuid(id)) return null;
+  const rows = await q("SELECT * FROM jobs WHERE id=$1 AND organization_id=$2", [id, organizationId]);
+  return mapJob(rows[0]);
+}
+
+export async function recentJobs(organizationId, limit = 20) {
+  const rows = await q(
+    "SELECT id,type,status,created_at,started_at,finished_at FROM jobs WHERE organization_id=$1 ORDER BY created_at DESC LIMIT $2",
+    [organizationId, limit]
+  );
+  return rows.map((r) => ({ id: r.id, type: r.type, status: r.status, createdAt: iso(r.created_at), startedAt: iso(r.started_at), finishedAt: iso(r.finished_at) }));
+}

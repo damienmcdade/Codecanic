@@ -219,14 +219,23 @@ function renderJobs() {
   queueCount.textContent = `${state.repairJobs.length} queued`;
   jobList.innerHTML = state.repairJobs.length
     ? state.repairJobs
-        .map(
-          (job) => `
+        .map((job) => {
+          const title = job.pullRequestUrl
+            ? `<a href="${escapeHtml(job.pullRequestUrl)}" target="_blank" rel="noopener">${escapeHtml(job.branchName || "View pull request")}</a>`
+            : escapeHtml(job.branchName || "Repair job");
+          const bits = [];
+          const statusLabel = { queued: "queued", running: "running", pull_request_opened: "PR opened", no_changes: "no changes", failed: "failed" }[job.status] || job.status;
+          bits.push(statusLabel);
+          if (typeof job.confidenceScore === "number") bits.push(`confidence ${job.confidenceScore}/100`);
+          if (job.error) bits.push(job.error);
+          if (job.reason) bits.push(job.reason);
+          return `
             <article class="job">
-              <strong>${escapeHtml(job.branchName)}</strong>
-              <span>${escapeHtml(job.findingIds.length)} repairs · ${escapeHtml(job.status)} · ${escapeHtml(job.workerCount)} workers</span>
+              <strong>${title}</strong>
+              <span>${bits.map(escapeHtml).join(" · ")}</span>
             </article>
-          `
-        )
+          `;
+        })
         .join("")
     : `<p class="empty-state">Approved repairs will appear here.</p>`;
 }
@@ -1318,6 +1327,19 @@ window.addEventListener("message", (event) => {
   }
 });
 
+// Poll a background job until it succeeds or fails. Scans/repairs run async on
+// the server worker; the POST returns a jobId and we poll /api/jobs/<id>.
+async function pollJob(jobId, { timeoutMs = 180000, intervalMs = 1500 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const job = await api(`/api/jobs/${jobId}`);
+    if (job.status === "succeeded") return job.result;
+    if (job.status === "failed") throw new Error(job.error || "The job failed.");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error("Timed out waiting for the job to finish.");
+}
+
 async function runScan() {
   const sourceUrl = document.querySelector("#source-url").value.trim();
   const scanDepth = document.querySelector("#scan-depth").value;
@@ -1332,10 +1354,11 @@ async function runScan() {
   }, 420);
 
   try {
-    const report = await api("/api/scan", {
+    const enqueued = await api("/api/scan", {
       method: "POST",
       body: JSON.stringify({ sourceUrl, scanDepth, connectors: state.connectors })
     });
+    const report = await pollJob(enqueued.jobId);
     window.clearInterval(timer);
     document.body.classList.remove("scan-active");
     state.activeReport = report;
@@ -1358,17 +1381,27 @@ async function approveRepairs(findingIds) {
     return;
   }
 
+  // Show a pending job immediately, then poll for the real result.
+  const pending = { id: `pending-${Date.now()}`, status: "queued", findingIds };
+  state.repairJobs = [pending, ...state.repairJobs];
+  renderJobs();
+  showToast("Repair job queued. Generating patches…");
+
   try {
-    const job = await api("/api/repair", {
+    const enqueued = await api("/api/repair", {
       method: "POST",
       body: JSON.stringify({ findingIds, reportId: state.activeReport?.id })
     });
-    state.repairJobs = [job, ...state.repairJobs];
-    audit(`${findingIds.length} repairs approved`);
+    const result = await pollJob(enqueued.jobId);
+    state.repairJobs = state.repairJobs.map((j) => (j.id === pending.id ? { ...result, id: enqueued.jobId } : j));
+    audit(`${findingIds.length} repairs processed: ${result.status}`);
     saveState();
     renderJobs();
-    showToast("Repair job queued for patch generation.");
+    showToast(result.pullRequestUrl ? "Pull request opened." : (result.reason || "Repair finished."));
   } catch (error) {
+    state.repairJobs = state.repairJobs.map((j) => (j.id === pending.id ? { ...j, status: "failed", error: error.message } : j));
+    saveState();
+    renderJobs();
     showToast(error.message);
   }
 }

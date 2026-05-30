@@ -10,8 +10,10 @@ import oauth from "./api/oauth.js";
 import orgs from "./api/orgs.js";
 import repair from "./api/repair.js";
 import scan from "./api/scan.js";
+import jobs from "./api/jobs.js";
 import { logger, newRequestId } from "./api/_log.js";
 import { initObservability, captureException, flushObservability } from "./api/_observability.js";
+import { startWorker, stopWorker } from "./api/_worker.js";
 
 const port = Number(process.env.PORT || 3000);
 const publicDir = join(process.cwd(), "public");
@@ -19,6 +21,7 @@ const publicDir = join(process.cwd(), "public");
 const exactRoutes = new Map([
   ["/api/connectors", connectors],
   ["/api/health", health],
+  ["/api/jobs", jobs],
   ["/api/orgs", orgs],
   ["/api/repair", repair],
   ["/api/scan", scan]
@@ -26,7 +29,8 @@ const exactRoutes = new Map([
 
 const prefixRoutes = [
   { prefix: "/api/auth/", handler: auth },
-  { prefix: "/api/oauth/", handler: oauth }
+  { prefix: "/api/oauth/", handler: oauth },
+  { prefix: "/api/jobs/", handler: jobs }
 ];
 
 const contentTypes = {
@@ -197,6 +201,9 @@ initObservability();
 
 server.listen(port, "0.0.0.0", () => {
   logger.info("server.listening", { port });
+  // Disable the in-process worker with CODECANIC_DISABLE_WORKER=1 (e.g. when
+  // running a separate dedicated worker process).
+  if (process.env.CODECANIC_DISABLE_WORKER !== "1") startWorker();
 });
 
 // Last-resort handlers so a stray rejection/exception is reported, not silent.
@@ -218,6 +225,7 @@ async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info("shutdown.start", { signal });
+  stopWorker();
   const force = setTimeout(() => { logger.error("shutdown.forced"); process.exit(1); }, 10_000);
   force.unref();
   server.close(async () => {

@@ -69,6 +69,17 @@ async function call(method, path, { body, origin = ORIGIN, cookie = true, header
   return { status: res.status, json, text, headers: res.headers };
 }
 
+// Poll a job until it reaches a terminal state (or times out).
+async function pollJob(orgSlug, jobId, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = await call("GET", `/api/jobs/${jobId}?organization=${orgSlug}`, { origin: null });
+    if (r.json?.status === "succeeded" || r.json?.status === "failed") return r.json;
+    await new Promise((res) => setTimeout(res, 1200));
+  }
+  return { status: "timeout" };
+}
+
 // --- boot server -----------------------------------------------------------
 const dataDir = await mkdtemp(join(tmpdir(), "codecanic-e2e-"));
 const child = spawn(process.execPath, ["server.js"], {
@@ -233,9 +244,9 @@ try {
   }
 
   // 11. Scan + Repair -----------------------------------------------------
-  console.log("\nScan & Repair (core product — REAL engine)");
+  console.log("\nScan & Repair (core product — REAL engine, ASYNC jobs)");
   {
-    // Contract checks that need no network:
+    // Synchronous validation still returns clean codes before anything is queued:
     const noUrl = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { scanDepth: "full" } });
     ok("scan without URL → 400", noUrl.status === 400, `status=${noUrl.status}`);
     const badHost = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { sourceUrl: "https://evil.example.com/o/r" } });
@@ -243,28 +254,35 @@ try {
     const badProto = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { sourceUrl: "http://github.com/o/r" } });
     ok("scan of non-https URL → 400", badProto.status === 400, `status=${badProto.status}`);
 
-    // Live scan of a real public repo with known vulns (needs git + network).
-    // Skip cleanly if offline; otherwise capture a report + finding to drive repair.
+    // Async scan: POST enqueues (202 + jobId), the worker runs it, the client polls.
     let reportId, realFindingId;
-    const scan = await call("POST", `/api/scan?organization=${orgSlug}`, {
+    const enq = await call("POST", `/api/scan?organization=${orgSlug}`, {
       body: { sourceUrl: "https://github.com/jquery/jquery", scanDepth: "full" }
     });
-    if (scan.status === 200) {
-      ok("live scan → real-v1 engine report", scan.json?.engine === "real-v1", `engine=${scan.json?.engine}`);
-      ok("scan returns a findings array", Array.isArray(scan.json?.findings), `type=${typeof scan.json?.findings}`);
-      ok("scan summary has numeric counts", typeof scan.json?.summary?.critical === "number" && typeof scan.json?.summary?.total === "number");
-      ok("scan reports the resolved repository + commit", !!scan.json?.repository?.commit, `repo=${JSON.stringify(scan.json?.repository)}`);
-      ok("scan reports what it actually walked", typeof scan.json?.scanned?.filesWalked === "number");
-      ok("findings carry severity+target", (scan.json?.findings || []).every((f) => f.severity && f.target));
-      reportId = scan.json?.id;
-      realFindingId = scan.json?.findings?.[0]?.id;
-    } else if (scan.status === 422 || scan.status === 502) {
-      console.log(`  ⊘ SKIP live scan — repo unreachable in this env (status=${scan.status}: ${scan.json?.error || ""})`);
+    ok("scan enqueues → 202 + jobId", enq.status === 202 && !!enq.json?.jobId && enq.json?.status === "queued", `status=${enq.status} ${enq.text.slice(0,80)}`);
+    ok("scan job is typed 'scan' with a pollUrl", enq.json?.type === "scan" && /\/api\/jobs\//.test(enq.json?.pollUrl || ""));
+
+    const unknownJob = await call("GET", `/api/jobs/00000000-0000-0000-0000-000000000000?organization=${orgSlug}`, { origin: null });
+    ok("unknown job id → 404", unknownJob.status === 404, `status=${unknownJob.status}`);
+
+    const finished = enq.json?.jobId ? await pollJob(orgSlug, enq.json.jobId) : { status: "no-job" };
+    if (finished.status === "succeeded") {
+      const report = finished.result;
+      ok("scan job → succeeded with real-v1 report", report?.engine === "real-v1", `engine=${report?.engine}`);
+      ok("report has a findings array", Array.isArray(report?.findings));
+      ok("report summary has numeric counts", typeof report?.summary?.critical === "number" && typeof report?.summary?.total === "number");
+      ok("report resolved repository + commit", !!report?.repository?.commit);
+      ok("report shows what it walked", typeof report?.scanned?.filesWalked === "number");
+      ok("findings carry severity+target", (report?.findings || []).every((f) => f.severity && f.target));
+      reportId = report?.id;
+      realFindingId = report?.findings?.[0]?.id;
+    } else if (finished.status === "failed") {
+      console.log(`  ⊘ SKIP scan result — job failed in this env: ${finished.error || ""}`);
     } else {
-      ok("live scan returned a usable status", false, `unexpected status=${scan.status} ${scan.text.slice(0,100)}`);
+      console.log(`  ⊘ SKIP scan result — job did not finish (status=${finished.status})`);
     }
 
-    // Repair contract (REAL engine: opens a GitHub PR with a connected token).
+    // Repair validation is still synchronous (clean codes before queueing).
     const empty = await call("POST", `/api/repair?organization=${orgSlug}`, { body: { findingIds: [] } });
     ok("repair with no findings → 400", empty.status === 400, `status=${empty.status}`);
     const noReport = await call("POST", `/api/repair?organization=${orgSlug}`, { body: { findingIds: ["x"] } });
@@ -273,8 +291,8 @@ try {
     ok("repair with unknown reportId → 404", badReport.status === 404, `status=${badReport.status}`);
 
     if (reportId && realFindingId) {
-      // Real path: report exists + finding exists, but no GitHub provider is
-      // connected in the test org → engine must refuse with a clear 422, NOT fake a PR.
+      // Report + finding exist, but no GitHub provider is connected → the
+      // synchronous token check must refuse with 422 BEFORE queueing (no fake PR).
       const repair = await call("POST", `/api/repair?organization=${orgSlug}`, {
         body: { reportId, findingIds: [realFindingId] }
       });

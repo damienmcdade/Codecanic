@@ -44,8 +44,9 @@ npm run dev
 - `GET /api/oauth/callback?provider=...&code=...&state=...` is the redirect target; it verifies the signed state, exchanges the code for an access token, and persists credentials scoped to the active organization.
 - `GET /api/oauth/status` lists provider connections for the active organization.
 - `GET /api/health` returns deployment identity for Vercel/Railway sync checks.
-- `POST /api/scan` runs the **real v1 scan engine** against `sourceUrl` (an `https://github.com|gitlab.com|bitbucket.org/owner/repo` URL): it shallow-clones the repo (using the organization's connected provider token for private repos), then returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query. Private repos with no connected provider return `422` (not fabricated findings); unsupported hosts/URLs return `400`.
-- `POST /api/repair` takes a `reportId` (from a prior scan) + approved `findingIds`, and **opens a real GitHub pull request**: it clones the repo with the org's GitHub token, applies deterministic safe patches, commits, pushes a branch, and creates the PR. Findings that can't be auto-fixed safely are listed in the PR body as manual action items. Returns `422` (no fabricated PR) when GitHub isn't connected or the repo isn't on GitHub; `404` for an unknown report.
+- `POST /api/scan` **enqueues** a scan job (`202` + `{ jobId, pollUrl }`); a background worker runs the real v1 scan engine against `sourceUrl` (an `https://github.com|gitlab.com|bitbucket.org/owner/repo` URL): it shallow-clones the repo (using the organization's connected provider token for private repos), then returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query. Private repos with no connected provider return `422` (not fabricated findings); unsupported hosts/URLs return `400`.
+- `POST /api/repair` takes a `reportId` (from a prior scan) + approved `findingIds`. It runs **synchronous validation** (report/findings exist, repo is GitHub, token present — `404`/`400`/`422` as appropriate), then **enqueues** a repair job (`202` + `{ jobId, pollUrl }`). The worker clones the repo with the org's GitHub token, applies deterministic safe patches, commits, pushes a branch, and **opens a real pull request**. Findings that can't be auto-fixed safely are listed in the PR body as manual action items.
+- `GET /api/jobs/<id>` returns a job's `status` (`queued`/`running`/`succeeded`/`failed`) and, when finished, its `result` (the scan report or repair outcome) or `error`. `GET /api/jobs` lists the org's recent jobs.
 
 ### Repair engine (v1)
 
@@ -100,6 +101,12 @@ The web UI surfaces these: an **email-verification banner** with a resend button
 
 Proven by `npm run test:obs` (log formatting, redaction, request-id shape, no-op capture).
 
+## Background jobs
+
+Scans and repairs run asynchronously so a long clone/scan/PR never blocks the request or hits a proxy timeout. `POST /api/scan` and `POST /api/repair` validate synchronously, then enqueue a row in the `jobs` table and return `202` + a `jobId`. An **in-process worker** (`api/_worker.js`, started by `server.js`) claims jobs with `SELECT … FOR UPDATE SKIP LOCKED` — so it's safe to run multiple replicas — executes the work (`api/_jobs.js`), and writes the result/error back. Jobs left `running` by a crashed worker are automatically re-queued. The web UI polls `/api/jobs/<id>` until the job finishes. Set `CODECANIC_DISABLE_WORKER=1` to run a dedicated worker process instead of the in-process one.
+
+Proven by `npm run test:queue` (enqueue, claim-exactly-once, complete/fail, org scoping, stale requeue, executor error handling) and the e2e (real async scan → poll → report).
+
 ## Deployment Targets
 
 - Vercel: static web deployment is ready through `vercel.json`.
@@ -116,5 +123,5 @@ Proven by `npm run test:obs` (log formatting, redaction, request-id shape, no-op
 5. ~~Migrate the datastore to Postgres.~~ ✓ Relational schema with cascades + indexes; `pg` in prod, embedded PGlite locally (`api/_db.js`, `api/_repo.js`).
 6. ~~Auth hardening.~~ ✓ Email verification, password reset, raised scrypt cost (with transparent upgrade), and DB-backed login lockout. Pluggable email via Resend (`api/_email.js`).
 7. ~~Observability + frontend auth pages.~~ ✓ Structured JSON logging with request ids, Sentry error tracking (`api/_log.js`, `api/_observability.js`), and the verify-banner / forgot-password / reset-password UI.
-8. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
+8. ~~Async scan/repair job queues.~~ ✓ DB-backed queue + in-process worker (`api/_worker.js`, `api/_jobs.js`); endpoints return `202` + `jobId`, the UI polls `/api/jobs/<id>`.
 9. Add mobile packaging with Capacitor for iOS and Android.

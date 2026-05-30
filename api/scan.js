@@ -1,28 +1,7 @@
-import { json, planFor, readBody, resolveOrgContext } from "./_lib.js";
+import { json, readBody, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
-import { decryptSecret } from "./_crypto.js";
-import { scanRepository, validateGitUrl } from "./_scanner.js";
-import { randomUUID } from "node:crypto";
-
-// Map a git host to the connector provider whose token can clone it.
-const HOST_PROVIDER = {
-  "github.com": "GitHub",
-  "www.github.com": "GitHub",
-  "gitlab.com": "GitLab",
-  "bitbucket.org": "Bitbucket"
-};
-
-async function tokenForRepo(meta, organization) {
-  const provider = HOST_PROVIDER[meta.host];
-  if (!provider) return null;
-  const cred = await repo.findConnectorCred(provider, organization.id);
-  if (!cred?.accessToken) return null;
-  try {
-    return decryptSecret(cred.accessToken);
-  } catch {
-    return null;
-  }
-}
+import { validateGitUrl } from "./_scanner.js";
+import { JOB_TYPES } from "./_jobs.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -50,68 +29,30 @@ export default async function handler(req, res) {
       json(res, 400, { error: "Provide a repository URL to scan (https://host/owner/repo)." });
       return;
     }
-
-    // Validate up front so a bad URL is a clean 400, not a 5xx.
-    let meta;
+    // Validate the URL up front so a bad URL is a clean 400, not a failed job.
     try {
-      meta = validateGitUrl(body.sourceUrl);
+      validateGitUrl(body.sourceUrl);
     } catch (err) {
       json(res, 400, { error: err.message });
       return;
     }
 
-    const tier = body.tier || context.organization.plan || "Free";
-    const plan = planFor(tier);
-    const token = await tokenForRepo(meta, context.organization);
-
-    let result;
-    try {
-      result = await scanRepository({
-        sourceUrl: body.sourceUrl,
-        token,
-        scanDepth: body.scanDepth || "full"
-      });
-    } catch (err) {
-      // Honest failure: surface why we could not scan instead of faking findings.
-      const isAccess = /private|Could not access|Authentication|not found/i.test(err.message || "");
-      json(res, isAccess ? 422 : 502, {
-        error: err.message || "Scan failed.",
-        hint: isAccess
-          ? "Connect the matching provider for this organization, or verify the repository URL."
-          : "The repository could not be analyzed. Try again or check the URL."
-      });
-      return;
-    }
-
-    const job = {
-      id: randomUUID(),
-      engine: "real-v1",
-      status: "report_ready",
-      tier,
-      organization: context.organization.slug,
-      queue: plan.label,
-      workers: plan.workers,
-      sourceUrl: result.repository?.url || body.sourceUrl,
-      repository: result.repository,
-      scanDepth: body.scanDepth || "full",
-      createdAt: new Date().toISOString(),
-      scanned: result.scanned,
-      summary: result.summary,
-      findings: result.findings
-    };
-
-    // Persist the report so an approved repair can load the findings later.
-    // (The repo prunes to the most recent reports per org.)
-    await repo.insertReport({
-      id: job.id,
+    // Enqueue the (slow) clone+scan work; the worker runs it and stores a report.
+    const job = await repo.enqueueJob({
+      type: JOB_TYPES.SCAN,
       organizationId: context.organization.id,
-      sourceUrl: job.sourceUrl,
-      createdAt: job.createdAt,
-      summary: job.summary,
-      findings: job.findings
+      userId: context.user.id,
+      payload: {
+        sourceUrl: body.sourceUrl,
+        scanDepth: body.scanDepth || "full",
+        tier: body.tier || context.organization.plan || "Free",
+        organizationId: context.organization.id,
+        organizationSlug: context.organization.slug,
+        organizationPlan: context.organization.plan
+      }
     });
 
-    json(res, 200, job);
+    json(res, 202, { jobId: job.id, type: "scan", status: job.status, pollUrl: `/api/jobs/${job.id}` });
   } catch (error) {
     json(res, 400, { error: error.message });
   }

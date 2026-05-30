@@ -78,6 +78,22 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
   used_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS jobs (
+  id uuid PRIMARY KEY,
+  type text NOT NULL,
+  status text NOT NULL DEFAULT 'queued',
+  organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  payload jsonb NOT NULL,
+  result jsonb,
+  error text,
+  attempts integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  finished_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_queued ON jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_org ON jobs(organization_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships(organization_id);

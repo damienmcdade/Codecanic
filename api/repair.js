@@ -1,8 +1,8 @@
 import { json, readBody, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { decryptSecret } from "./_crypto.js";
-import { runRepair } from "./_repair.js";
 import { validateGitUrl } from "./_scanner.js";
+import { JOB_TYPES } from "./_jobs.js";
 
 const HOST_PROVIDER = {
   "github.com": "GitHub",
@@ -11,16 +11,12 @@ const HOST_PROVIDER = {
   "bitbucket.org": "Bitbucket"
 };
 
-async function tokenFor(meta, organization) {
-  const provider = HOST_PROVIDER[meta.host];
-  if (!provider) return null;
-  const cred = await repo.findConnectorCred(provider, organization.id);
-  if (!cred?.accessToken) return null;
-  try {
-    return decryptSecret(cred.accessToken);
-  } catch {
-    return null;
-  }
+async function hasToken(host, organizationId) {
+  const provider = HOST_PROVIDER[host];
+  if (!provider) return false;
+  const cred = await repo.findConnectorCred(provider, organizationId);
+  if (!cred?.accessToken) return false;
+  try { decryptSecret(cred.accessToken); return true; } catch { return false; }
 }
 
 export default async function handler(req, res) {
@@ -55,18 +51,17 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Fast, synchronous validation — keep clear error codes before queueing.
     const report = await repo.findReport(body.reportId, context.organization.id);
     if (!report) {
       json(res, 404, { error: "Scan report not found. Run a scan first, then approve repairs from that report." });
       return;
     }
-
-    const selected = report.findings.filter((f) => findingIds.includes(f.id));
+    const selected = (report.findings || []).filter((f) => findingIds.includes(f.id));
     if (!selected.length) {
       json(res, 400, { error: "None of the selected findings exist in that report." });
       return;
     }
-
     let meta;
     try {
       meta = validateGitUrl(report.sourceUrl);
@@ -74,48 +69,24 @@ export default async function handler(req, res) {
       json(res, 400, { error: `Report source is not repairable: ${err.message}` });
       return;
     }
-
-    const token = await tokenFor(meta, context.organization);
-
-    let result;
-    try {
-      result = await runRepair({
-        sourceUrl: report.sourceUrl,
-        token,
-        findings: selected,
-        reportId: report.id
-      });
-    } catch (err) {
-      const status = err.code === "access" || err.code === "unsupported" ? 422 : 502;
-      json(res, status, { error: err.message || "Repair failed." });
+    if (!meta.host.endsWith("github.com")) {
+      json(res, 422, { error: "Automated pull requests are supported for GitHub repositories in v1." });
+      return;
+    }
+    if (!(await hasToken(meta.host, context.organization.id))) {
+      json(res, 422, { error: "Connect GitHub with write access for this organization to open repair pull requests." });
       return;
     }
 
-    if (!result.opened) {
-      json(res, 200, {
-        status: "no_changes",
-        organization: context.organization.slug,
-        reportId: report.id,
-        reason: result.reason,
-        manual: result.manual
-      });
-      return;
-    }
-
-    json(res, 200, {
-      status: "pull_request_opened",
-      organization: context.organization.slug,
-      reportId: report.id,
-      pullRequestUrl: result.pullRequestUrl,
-      pullRequestNumber: result.pullRequestNumber,
-      branchName: result.branch,
-      baseBranch: result.baseBranch,
-      applied: result.applied,
-      manual: result.manual,
-      confidence: result.confidence,
-      confidenceScore: result.confidenceScore,
-      createdAt: new Date().toISOString()
+    // Enqueue the (slow) clone+patch+push+PR work.
+    const job = await repo.enqueueJob({
+      type: JOB_TYPES.REPAIR,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      payload: { reportId: report.id, findingIds, organizationId: context.organization.id }
     });
+
+    json(res, 202, { jobId: job.id, type: "repair", status: job.status, pollUrl: `/api/jobs/${job.id}` });
   } catch (error) {
     json(res, 400, { error: error.message });
   }
