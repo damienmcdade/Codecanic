@@ -15,7 +15,8 @@
     "test:db": "node scripts/db.test.mjs",
     "test:auth": "node scripts/auth.test.mjs",
     "test:obs": "node scripts/obs.test.mjs",
-    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/auth.test.mjs && node scripts/obs.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs"
+    "test:migrate": "node scripts/migrate.test.mjs",
+    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/migrate.test.mjs && node scripts/auth.test.mjs && node scripts/obs.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs"
   },
   "keywords": [
     "code-scanning",
@@ -25,6 +26,9 @@
   ],
   "author": "Codecanic",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",

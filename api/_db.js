@@ -7,6 +7,7 @@
 // Exposes q(sql, params) -> rows and withTx(fn) -> runs fn in a transaction with
 // its own bound q. Schema is created lazily on first use (idempotent).
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -144,7 +145,66 @@ async function init() {
   const url = process.env.DATABASE_URL;
   backend = url ? await buildPgBackend(url) : await buildPgliteBackend();
   await backend.exec(SCHEMA);
+  await migrateLegacyJson(backend);
   return backend;
+}
+
+// One-time, idempotent import of the pre-Postgres JSON-file store. Runs only
+// when the relational tables are empty AND a legacy ${DATA_DIR}/codecanic.json
+// exists, so deploying the relational version doesn't orphan existing accounts.
+async function migrateLegacyJson(b) {
+  try {
+    const userCount = (await b.q("SELECT count(*)::int AS n FROM users"))[0]?.n ?? 0;
+    if (userCount > 0) return;
+    const legacyPath = join(process.env.CODECANIC_DATA_DIR || ".data", "codecanic.json");
+    let data;
+    try {
+      data = JSON.parse(await readFile(legacyPath, "utf8"));
+    } catch {
+      return; // no legacy file → nothing to migrate
+    }
+    const counts = await b.withTx(async (q) => {
+      for (const u of data.users || []) {
+        await q(
+          `INSERT INTO users (id,email,name,password_hash,created_at,terms_accepted_at,privacy_accepted_at,marketing_opt_in,age_confirmed,email_verified)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true) ON CONFLICT (id) DO NOTHING`,
+          [u.id, u.email, u.name, u.passwordHash, u.createdAt || new Date().toISOString(),
+           u.termsAcceptedAt || null, u.privacyAcceptedAt || null, u.marketingOptIn === true, u.ageConfirmed === true]
+        );
+      }
+      for (const o of data.organizations || []) {
+        await q(`INSERT INTO organizations (id,name,slug,plan,created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`,
+          [o.id, o.name, o.slug, o.plan || "Free", o.createdAt || new Date().toISOString()]);
+      }
+      for (const m of data.memberships || []) {
+        await q(`INSERT INTO memberships (id,user_id,organization_id,role,created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING`,
+          [m.id, m.userId, m.organizationId, m.role || "member", m.createdAt || new Date().toISOString()]);
+      }
+      for (const s of data.sessions || []) {
+        await q(`INSERT INTO sessions (id,user_id,created_at,expires_at) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+          [s.id, s.userId, s.createdAt || new Date().toISOString(), s.expiresAt]);
+      }
+      for (const c of data.connectorCreds || []) {
+        await q(
+          `INSERT INTO connector_creds (id,provider,organization_id,user_id,access_token,refresh_token,token_type,scope,expires_in,updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (provider, organization_id) DO NOTHING`,
+          [c.id, c.provider, c.organizationId, c.userId || null, c.accessToken, c.refreshToken || null,
+           c.tokenType || null, c.scope || null, c.expiresIn || null, c.updatedAt || new Date().toISOString()]
+        );
+      }
+      for (const r of data.reports || []) {
+        await q(
+          `INSERT INTO reports (id,organization_id,source_url,created_at,summary,findings) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb) ON CONFLICT (id) DO NOTHING`,
+          [r.id, r.organizationId, r.sourceUrl || null, r.createdAt || new Date().toISOString(),
+           JSON.stringify(r.summary ?? null), JSON.stringify(r.findings ?? [])]
+        );
+      }
+      return { users: (data.users || []).length, organizations: (data.organizations || []).length };
+    });
+    process.stdout.write(JSON.stringify({ level: "info", msg: "migrate.legacy_json", ...counts }) + "\n");
+  } catch (err) {
+    process.stderr.write(JSON.stringify({ level: "error", msg: "migrate.legacy_json_failed", err: String(err?.message || err) }) + "\n");
+  }
 }
 
 function ready() {
