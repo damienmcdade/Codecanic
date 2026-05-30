@@ -15,7 +15,8 @@ const requiredFiles = [
   "server.js",
   "api/_lib.js",
   "api/_auth.js",
-  "api/_data.js",
+  "api/_db.js",
+  "api/_repo.js",
   "api/_scanner.js",
   "api/_repair.js",
   "api/auth.js",
@@ -43,9 +44,7 @@ const tempDir = await mkdtemp(join(tmpdir(), "codecanic-check-"));
 process.env.CODECANIC_DATA_DIR = tempDir;
 process.env.CODECANIC_SESSION_SECRET = "check-secret-do-not-use-in-prod";
 
-const { resetCache } = await import("../api/_data.js");
-resetCache();
-
+// Fresh temp data dir → a clean embedded Postgres (PGlite) for this run.
 const { default: authHandler } = await import("../api/auth.js");
 const { default: scanHandler } = await import("../api/scan.js");
 const { default: repairHandler } = await import("../api/repair.js");
@@ -125,7 +124,6 @@ async function authedInvoke(handler, method, body, path = "/api/test") {
 // The scan handler is wired to the real engine (which clones over the network);
 // deterministic detection is proven offline by scripts/scanner.test.mjs. Here we
 // only assert the contract that needs no network: a missing URL is a clean 400.
-resetCache();
 const scanNoUrl = await authedInvoke(scanHandler, "POST", { scanDepth: "full" }, "/api/scan");
 if (scanNoUrl.res.statusCode !== 400) {
   throw new Error(`Scan API should reject a missing URL with 400 (got ${scanNoUrl.res.statusCode}).`);
@@ -142,5 +140,8 @@ if (repair.res.statusCode !== 400) {
   throw new Error(`Repair API should reject a missing reportId with 400 (got ${repair.res.statusCode}).`);
 }
 
+const { closeDb } = await import("../api/_db.js");
+await closeDb();
 await rm(tempDir, { recursive: true, force: true });
 console.log("Codecanic project check passed.");
+process.exit(0);

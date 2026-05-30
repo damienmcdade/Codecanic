@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { getConnector, json } from "./_lib.js";
-import { read } from "./_data.js";
+import * as repo from "./_repo.js";
 import { currentUserContext } from "./_auth.js";
 import { decryptSecret } from "./_crypto.js";
 
@@ -276,10 +276,7 @@ async function handleVerify(req, res, url) {
     json(res, 400, { error: "Select an organization first." });
     return;
   }
-  const state = await read();
-  const credential = state.connectorCreds.find(
-    (entry) => entry.provider === name && entry.organizationId === organization.id
-  );
+  const credential = await repo.findConnectorCred(name, organization.id);
   if (!credential) {
     json(res, 404, { error: `${name} is not connected for this workspace yet.` });
     return;
@@ -378,10 +375,7 @@ async function handleProjects(req, res, url) {
     json(res, 400, { error: "Select an organization first." });
     return;
   }
-  const state = await read();
-  const credential = state.connectorCreds.find(
-    (entry) => entry.provider === name && entry.organizationId === organization.id
-  );
+  const credential = await repo.findConnectorCred(name, organization.id);
   if (!credential) {
     json(res, 404, { error: `${name} is not connected for this workspace yet.` });
     return;
@@ -495,10 +489,7 @@ async function handleStart(req, res, url) {
   }
 
   if (guide?.type === "manual") {
-    const stateData = await read();
-    const credential = stateData.connectorCreds.find(
-      (entry) => entry.provider === name && entry.organizationId === organization.id
-    );
+    const credential = await repo.findConnectorCred(name, organization.id);
     json(res, 200, {
       ...base,
       status: credential ? "connected" : "manual_token_required",
@@ -526,10 +517,7 @@ async function handleStart(req, res, url) {
   if (connector.scopes) authUrl.searchParams.set("scope", connector.scopes);
   if (name === "GitLab") authUrl.searchParams.set("response_type", "code");
 
-  const stateData = await read();
-  const credential = stateData.connectorCreds.find(
-    (entry) => entry.provider === name && entry.organizationId === organization.id
-  );
+  const credential = await repo.findConnectorCred(name, organization.id);
 
   json(res, 200, {
     ...base,
@@ -542,7 +530,6 @@ async function handleStart(req, res, url) {
 
 async function handleList(req, res) {
   const context = await currentUserContext(req);
-  const stateData = await read();
   const requestedOrg = req.headers["x-codecanic-org"] || null;
   const organization = context
     ? requestedOrg
@@ -550,9 +537,7 @@ async function handleList(req, res) {
       : context.organizations[0]
     : null;
   const orgId = organization?.id || null;
-  const connections = orgId
-    ? stateData.connectorCreds.filter((entry) => entry.organizationId === orgId)
-    : [];
+  const connections = orgId ? await repo.credsForOrg(orgId) : [];
 
   const list = Object.keys(providerGuides).map((name) => {
     const connector = getConnector(name);

@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { json, readBody } from "./_lib.js";
-import { read, write } from "./_data.js";
+import * as repo from "./_repo.js";
 import { currentUserContext, publicOrganization, slugify } from "./_auth.js";
 
 async function listOrgs(req, res) {
@@ -25,29 +24,7 @@ async function createOrg(req, res) {
     return;
   }
 
-  const now = new Date().toISOString();
-  let createdOrg;
-  await write(async (state) => {
-    let slug = slugify(name);
-    let suffix = 1;
-    while (state.organizations.some((org) => org.slug === slug)) {
-      suffix += 1;
-      slug = `${slugify(name)}-${suffix}`;
-    }
-    createdOrg = { id: randomUUID(), name, slug, plan: "Free", createdAt: now };
-    const membership = {
-      id: randomUUID(),
-      userId: context.user.id,
-      organizationId: createdOrg.id,
-      role: "owner",
-      createdAt: now
-    };
-    return {
-      ...state,
-      organizations: [...state.organizations, createdOrg],
-      memberships: [...state.memberships, membership]
-    };
-  });
+  const createdOrg = await repo.createOrganizationForUser(name, slugify(name), context.user.id);
   json(res, 200, { organization: publicOrganization(createdOrg) });
 }
 

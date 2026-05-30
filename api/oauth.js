@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { getConnector, json, readBody } from "./_lib.js";
-import { read, write } from "./_data.js";
+import * as repo from "./_repo.js";
 import { currentUserContext } from "./_auth.js";
 import { encryptSecret } from "./_crypto.js";
 
@@ -229,10 +229,7 @@ async function callback(req, res) {
   try {
     const token = await exchangeCode(provider, code, req);
     const now = new Date().toISOString();
-    const existingState = await read();
-    const orgValid = existingState.memberships.some(
-      (m) => m.userId === payload.userId && m.organizationId === payload.organizationId
-    );
+    const orgValid = await repo.membershipExists(payload.userId, payload.organizationId);
     if (!orgValid) {
       sendHtml(
         res,
@@ -245,26 +242,17 @@ async function callback(req, res) {
       return;
     }
 
-    await write(async (state) => ({
-      ...state,
-      connectorCreds: [
-        {
-          id: randomUUID(),
-          provider,
-          organizationId: payload.organizationId,
-          userId: payload.userId,
-          accessToken: encryptSecret(token.accessToken),
-          refreshToken: token.refreshToken ? encryptSecret(token.refreshToken) : null,
-          tokenType: token.tokenType,
-          scope: token.scope,
-          expiresIn: token.expiresIn,
-          updatedAt: now
-        },
-        ...state.connectorCreds.filter(
-          (entry) => !(entry.provider === provider && entry.organizationId === payload.organizationId)
-        )
-      ]
-    }));
+    await repo.upsertConnectorCred({
+      provider,
+      organizationId: payload.organizationId,
+      userId: payload.userId,
+      accessToken: encryptSecret(token.accessToken),
+      refreshToken: token.refreshToken ? encryptSecret(token.refreshToken) : null,
+      tokenType: token.tokenType,
+      scope: token.scope,
+      expiresIn: token.expiresIn,
+      updatedAt: now
+    });
 
     sendHtml(
       res,
@@ -316,26 +304,17 @@ async function manual(req, res) {
   }
 
   const now = new Date().toISOString();
-  await write(async (state) => ({
-    ...state,
-    connectorCreds: [
-      {
-        id: randomUUID(),
-        provider,
-        organizationId: organization.id,
-        userId: context.user.id,
-        accessToken: encryptSecret(token),
-        refreshToken: null,
-        tokenType: "manual",
-        scope: null,
-        expiresIn: null,
-        updatedAt: now
-      },
-      ...state.connectorCreds.filter(
-        (entry) => !(entry.provider === provider && entry.organizationId === organization.id)
-      )
-    ]
-  }));
+  await repo.upsertConnectorCred({
+    provider,
+    organizationId: organization.id,
+    userId: context.user.id,
+    accessToken: encryptSecret(token),
+    refreshToken: null,
+    tokenType: "manual",
+    scope: null,
+    expiresIn: null,
+    updatedAt: now
+  });
 
   json(res, 200, {
     provider,
@@ -366,12 +345,7 @@ async function disconnect(req, res) {
     return;
   }
 
-  await write(async (state) => ({
-    ...state,
-    connectorCreds: state.connectorCreds.filter(
-      (entry) => !(entry.provider === provider && entry.organizationId === organization.id)
-    )
-  }));
+  await repo.deleteConnectorCred(provider, organization.id);
 
   json(res, 200, { provider, status: "disconnected" });
 }
@@ -391,10 +365,8 @@ async function status(req, res) {
     json(res, 200, { connections: [] });
     return;
   }
-  const state = await read();
-  const connections = state.connectorCreds
-    .filter((entry) => entry.organizationId === organization.id)
-    .map(({ provider, scope, tokenType, updatedAt }) => ({ provider, scope, tokenType, updatedAt }));
+  const creds = await repo.credsForOrg(organization.id);
+  const connections = creds.map(({ provider, scope, tokenType, updatedAt }) => ({ provider, scope, tokenType, updatedAt }));
   json(res, 200, { connections });
 }
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { json, readBody } from "./_lib.js";
-import { read, write } from "./_data.js";
+import * as repo from "./_repo.js";
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -57,16 +57,6 @@ function clearLoginFailures(key) {
   loginAttempts.delete(key);
 }
 
-async function uniqueSlug(state, base) {
-  let candidate = base;
-  let suffix = 1;
-  while (state.organizations.some((org) => org.slug === candidate)) {
-    suffix += 1;
-    candidate = `${base}-${suffix}`;
-  }
-  return candidate;
-}
-
 async function signup(req, res) {
   const body = await readBody(req);
   const email = normalizeEmail(body.email);
@@ -98,8 +88,7 @@ async function signup(req, res) {
     return;
   }
 
-  const existing = await read();
-  if (existing.users.some((user) => user.email === email)) {
+  if (await repo.findUserByEmail(email)) {
     json(res, 409, { error: "An account with that email already exists." });
     return;
   }
@@ -119,24 +108,16 @@ async function signup(req, res) {
   };
 
   let createdOrg;
-  let createdMembership;
-  await write(async (state) => {
-    const slug = await uniqueSlug(state, slugify(orgName));
-    createdOrg = { id: randomUUID(), name: orgName, slug, plan: "Free", createdAt: now };
-    createdMembership = {
-      id: randomUUID(),
-      userId: user.id,
-      organizationId: createdOrg.id,
-      role: "owner",
-      createdAt: now
-    };
-    return {
-      ...state,
-      users: [...state.users, user],
-      organizations: [...state.organizations, createdOrg],
-      memberships: [...state.memberships, createdMembership]
-    };
-  });
+  try {
+    ({ organization: createdOrg } = await repo.createUserWithOrg(user, slugify(orgName), orgName));
+  } catch (err) {
+    // Unique-email race backstop (explicit check above handles the common case).
+    if (/unique|duplicate/i.test(err.message)) {
+      json(res, 409, { error: "An account with that email already exists." });
+      return;
+    }
+    throw err;
+  }
 
   const token = await createSession(user.id);
   res.setHeader("Set-Cookie", buildSessionCookie(token));
@@ -161,8 +142,7 @@ async function login(req, res) {
     return;
   }
 
-  const state = await read();
-  const user = state.users.find((entry) => entry.email === email);
+  const user = await repo.findUserByEmail(email);
   const ok = user ? await verifyPassword(password, user.passwordHash) : false;
   if (!user || !ok) {
     recordLoginFailure(key);
@@ -171,11 +151,7 @@ async function login(req, res) {
   }
   clearLoginFailures(key);
 
-  const memberships = state.memberships.filter((m) => m.userId === user.id);
-  const organizations = memberships
-    .map((m) => state.organizations.find((org) => org.id === m.organizationId))
-    .filter(Boolean)
-    .map(publicOrganization);
+  const organizations = (await repo.organizationsForUser(user.id)).map(publicOrganization);
 
   const token = await createSession(user.id);
   res.setHeader("Set-Cookie", buildSessionCookie(token));
@@ -207,10 +183,14 @@ async function exportData(req, res) {
     json(res, 401, { error: "Sign in to export your data." });
     return;
   }
-  const state = await read();
   const userId = ctx.user.id;
-  const myMemberships = state.memberships.filter((m) => m.userId === userId);
-  const myOrgIds = myMemberships.map((m) => m.organizationId);
+  const [myMemberships, myOrgs, mySessions] = await Promise.all([
+    repo.membershipsForUser(userId),
+    repo.organizationsForUser(userId),
+    repo.sessionsForUser(userId)
+  ]);
+  const myOrgIds = myOrgs.map((o) => o.id);
+  const creds = await repo.credsForExport(userId, myOrgIds);
   const payload = {
     exportedAt: new Date().toISOString(),
     notice:
@@ -224,28 +204,22 @@ async function exportData(req, res) {
       privacyAcceptedAt: ctx.user.privacyAcceptedAt || null,
       marketingOptIn: ctx.user.marketingOptIn === true
     },
-    organizations: state.organizations
-      .filter((o) => myOrgIds.includes(o.id))
-      .map(publicOrganization),
+    organizations: myOrgs.map(publicOrganization),
     memberships: myMemberships.map((m) => ({
       organizationId: m.organizationId,
       role: m.role,
       createdAt: m.createdAt
     })),
-    connectorCredentials: state.connectorCreds
-      .filter((c) => c.userId === userId || myOrgIds.includes(c.organizationId))
-      .map((c) => ({
-        provider: c.provider,
-        organizationId: c.organizationId,
-        tokenType: c.tokenType,
-        scope: c.scope,
-        updatedAt: c.updatedAt,
-        accessToken: "***redacted***",
-        refreshToken: c.refreshToken ? "***redacted***" : null
-      })),
-    activeSessions: state.sessions
-      .filter((s) => s.userId === userId)
-      .map((s) => ({ createdAt: s.createdAt, expiresAt: s.expiresAt }))
+    connectorCredentials: creds.map((c) => ({
+      provider: c.provider,
+      organizationId: c.organizationId,
+      tokenType: c.tokenType,
+      scope: c.scope,
+      updatedAt: c.updatedAt,
+      accessToken: "***redacted***",
+      refreshToken: c.refreshToken ? "***redacted***" : null
+    })),
+    activeSessions: mySessions
   };
   res.setHeader("Content-Disposition", 'attachment; filename="codecanic-data-export.json"');
   json(res, 200, payload);
@@ -274,34 +248,7 @@ async function deleteAccount(req, res) {
     return;
   }
 
-  const userId = ctx.user.id;
-  await write(async (state) => {
-    const myMemberships = state.memberships.filter((m) => m.userId === userId);
-    const myOrgIds = myMemberships.map((m) => m.organizationId);
-    const ownerCounts = new Map();
-    for (const m of state.memberships) {
-      if (m.role !== "owner") continue;
-      ownerCounts.set(m.organizationId, (ownerCounts.get(m.organizationId) || 0) + 1);
-    }
-    const orgsToDelete = new Set();
-    for (const m of myMemberships) {
-      if (m.role === "owner" && ownerCounts.get(m.organizationId) === 1) {
-        orgsToDelete.add(m.organizationId);
-      }
-    }
-    return {
-      ...state,
-      users: state.users.filter((u) => u.id !== userId),
-      sessions: state.sessions.filter((s) => s.userId !== userId),
-      memberships: state.memberships.filter(
-        (m) => m.userId !== userId && !orgsToDelete.has(m.organizationId)
-      ),
-      organizations: state.organizations.filter((o) => !orgsToDelete.has(o.id)),
-      connectorCreds: state.connectorCreds.filter(
-        (entry) => entry.userId !== userId && !orgsToDelete.has(entry.organizationId)
-      )
-    };
-  });
+  await repo.deleteUserAndSoleOwnedOrgs(ctx.user.id);
 
   res.setHeader("Set-Cookie", clearSessionCookie());
   json(res, 200, { status: "account_deleted" });

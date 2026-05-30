@@ -188,3 +188,24 @@ const server = createServer(async (req, res) => {
 server.listen(port, "0.0.0.0", () => {
   console.log(`Codecanic server listening on port ${port}`);
 });
+
+// Graceful shutdown: stop accepting connections, drain in-flight requests, then
+// close the database pool. Railway/Vercel send SIGTERM on every deploy/restart.
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} received, draining...`);
+  const force = setTimeout(() => { console.error("[shutdown] forced exit"); process.exit(1); }, 10_000);
+  force.unref();
+  server.close(async () => {
+    try {
+      const { closeDb } = await import("./api/_db.js");
+      await closeDb();
+    } catch {}
+    clearTimeout(force);
+    process.exit(0);
+  });
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

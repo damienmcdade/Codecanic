@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import { read, write } from "./_data.js";
+import * as repo from "./_repo.js";
 
 const scryptAsync = promisify(scrypt);
 const SESSION_DAYS = 14;
@@ -101,31 +101,19 @@ export function clearSessionCookie() {
   return attrs.join("; ");
 }
 
-const MAX_SESSIONS_PER_USER = 5;
-
 export async function createSession(userId) {
   const sessionId = randomUUID();
-  const session = {
+  await repo.createSession({
     id: sessionId,
     userId,
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + SESSION_DAYS * 86400_000).toISOString()
-  };
-  await write(async (state) => {
-    const now = Date.now();
-    const active = state.sessions.filter((s) => new Date(s.expiresAt).getTime() > now);
-    const mine = active.filter((s) => s.userId === userId).slice(0, MAX_SESSIONS_PER_USER - 1);
-    const others = active.filter((s) => s.userId !== userId);
-    return { ...state, sessions: [session, ...mine, ...others] };
   });
   return signSessionToken(sessionId);
 }
 
 export async function destroySession(sessionId) {
-  await write(async (state) => ({
-    ...state,
-    sessions: state.sessions.filter((session) => session.id !== sessionId)
-  }));
+  await repo.deleteSession(sessionId);
 }
 
 export async function currentSession(req) {
@@ -133,11 +121,10 @@ export async function currentSession(req) {
   const token = cookies[SESSION_COOKIE];
   const sessionId = verifySessionToken(token);
   if (!sessionId) return null;
-  const state = await read();
-  const session = state.sessions.find((entry) => entry.id === sessionId);
+  const session = await repo.findSession(sessionId);
   if (!session) return null;
   if (new Date(session.expiresAt).getTime() < Date.now()) return null;
-  const user = state.users.find((entry) => entry.id === session.userId);
+  const user = await repo.findUserById(session.userId);
   if (!user) return null;
   return { session, user };
 }
@@ -145,11 +132,10 @@ export async function currentSession(req) {
 export async function currentUserContext(req) {
   const auth = await currentSession(req);
   if (!auth) return null;
-  const state = await read();
-  const memberships = state.memberships.filter((m) => m.userId === auth.user.id);
-  const organizations = memberships
-    .map((m) => state.organizations.find((org) => org.id === m.organizationId))
-    .filter(Boolean);
+  const [memberships, organizations] = await Promise.all([
+    repo.membershipsForUser(auth.user.id),
+    repo.organizationsForUser(auth.user.id)
+  ]);
   return { ...auth, memberships, organizations };
 }
 

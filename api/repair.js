@@ -1,5 +1,5 @@
 import { json, readBody, resolveOrgContext } from "./_lib.js";
-import { read } from "./_data.js";
+import * as repo from "./_repo.js";
 import { decryptSecret } from "./_crypto.js";
 import { runRepair } from "./_repair.js";
 import { validateGitUrl } from "./_scanner.js";
@@ -11,12 +11,10 @@ const HOST_PROVIDER = {
   "bitbucket.org": "Bitbucket"
 };
 
-async function tokenFor(meta, organization, state) {
+async function tokenFor(meta, organization) {
   const provider = HOST_PROVIDER[meta.host];
   if (!provider) return null;
-  const cred = state.connectorCreds.find(
-    (c) => c.provider === provider && c.organizationId === organization.id
-  );
+  const cred = await repo.findConnectorCred(provider, organization.id);
   if (!cred?.accessToken) return null;
   try {
     return decryptSecret(cred.accessToken);
@@ -53,10 +51,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const state = await read();
-    const report = state.reports.find(
-      (r) => r.id === body.reportId && r.organizationId === context.organization.id
-    );
+    const report = await repo.findReport(body.reportId, context.organization.id);
     if (!report) {
       json(res, 404, { error: "Scan report not found. Run a scan first, then approve repairs from that report." });
       return;
@@ -76,7 +71,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const token = await tokenFor(meta, context.organization, state);
+    const token = await tokenFor(meta, context.organization);
 
     let result;
     try {

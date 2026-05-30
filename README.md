@@ -66,6 +66,15 @@ Bounded for safety: https-only SSRF-allowlisted hosts, shallow `--depth 1` clone
 
 Copy `.env.example` into your deployment environment and fill in the provider credentials owned by your company. Each OAuth-capable provider needs both `*_CLIENT_ID` and `*_CLIENT_SECRET`; sessions are signed with `CODECANIC_SESSION_SECRET`.
 
+## Data layer
+
+Codecanic uses **Postgres** via a small relational schema (`api/_db.js` + `api/_repo.js`): `users`, `organizations`, `memberships`, `sessions`, `connector_creds`, `reports` — with unique constraints, foreign keys, indexes, and `ON DELETE CASCADE`. All SQL lives in `api/_repo.js`; handlers call typed functions.
+
+- **Production:** set `DATABASE_URL` to a managed Postgres (Railway Postgres / Neon / Supabase). The driver uses a connection pool and TLS, and `server.js` drains the pool on `SIGTERM`.
+- **Local/dev/test:** with no `DATABASE_URL`, the app runs **embedded Postgres ([PGlite](https://pglite.dev), real Postgres in WASM)** persisted under `${CODECANIC_DATA_DIR}/pgdata` — the *same SQL* runs in both, so tests need no database server.
+
+Durability across restarts, unique constraints, and cascading integrity are proven by `npm run test:db`.
+
 ## Deployment Targets
 
 - Vercel: static web deployment is ready through `vercel.json`.
@@ -75,10 +84,11 @@ Copy `.env.example` into your deployment environment and fill in the provider cr
 
 ## Next Build Steps
 
-1. ~~Add authentication and organization workspaces.~~ ✓ Session cookies + JSON-file user/org/membership store at `${CODECANIC_DATA_DIR}/codecanic.json`.
-2. ~~Implement real connector OAuth flows.~~ ✓ Signed-state authorization URL → `/api/oauth/callback` → provider-specific token exchange (GitHub, Vercel, GitLab, Bitbucket); per-org credentials persisted.
+1. ~~Add authentication and organization workspaces.~~ ✓ Session cookies + relational user/org/membership store.
+2. ~~Implement real connector OAuth flows.~~ ✓ Signed-state authorization URL → `/api/oauth/callback` → provider-specific token exchange (GitHub, Vercel, GitLab, Bitbucket); per-org credentials persisted (encrypted at rest).
 3. ~~Build a real scan engine.~~ ✓ v1 clones the repo and runs real dependency SCA (OSV.dev), secret scanning, and hygiene checks (`api/_scanner.js`).
 4. ~~Make repair real.~~ ✓ v1 generates patches and opens a real GitHub pull request, with manual items in the PR body (`api/_repair.js`). Next: rerun validation/tests on the patched branch and add CI-based merge-confidence before proposing.
-5. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
-6. Migrate the JSON-file datastore to managed Postgres (durability + multi-replica safety).
-5. Add mobile packaging with Capacitor for iOS and Android.
+5. ~~Migrate the datastore to Postgres.~~ ✓ Relational schema with cascades + indexes; `pg` in prod, embedded PGlite locally (`api/_db.js`, `api/_repo.js`).
+6. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
+7. Auth hardening: email verification, password reset, raise the scrypt cost, move login lockout into the DB. Add error tracking (Sentry) + structured logging.
+8. Add mobile packaging with Capacitor for iOS and Android.

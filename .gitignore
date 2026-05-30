@@ -9,6 +9,7 @@ build/
 dist/
 .data/
 .data-*/
+pgdata/
 
 # Capacitor / Android generated state
 android/build/
