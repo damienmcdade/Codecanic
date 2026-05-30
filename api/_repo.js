@@ -12,7 +12,7 @@ const mapUser = (r) => r && {
   id: r.id, email: r.email, name: r.name, passwordHash: r.password_hash,
   createdAt: iso(r.created_at), termsAcceptedAt: iso(r.terms_accepted_at),
   privacyAcceptedAt: iso(r.privacy_accepted_at), marketingOptIn: r.marketing_opt_in,
-  ageConfirmed: r.age_confirmed
+  ageConfirmed: r.age_confirmed, emailVerified: r.email_verified
 };
 const mapOrg = (r) => r && { id: r.id, name: r.name, slug: r.slug, plan: r.plan, createdAt: iso(r.created_at) };
 const mapMembership = (r) => r && { id: r.id, userId: r.user_id, organizationId: r.organization_id, role: r.role, createdAt: iso(r.created_at) };
@@ -45,8 +45,17 @@ export async function findUserByEmail(email) {
 }
 
 export async function findUserById(id) {
+  if (!isUuid(id)) return null;
   const rows = await q("SELECT * FROM users WHERE id=$1", [id]);
   return mapUser(rows[0]);
+}
+
+export async function updateUserPassword(userId, passwordHash) {
+  await q("UPDATE users SET password_hash=$2 WHERE id=$1", [userId, passwordHash]);
+}
+
+export async function markEmailVerified(userId) {
+  await q("UPDATE users SET email_verified=true WHERE id=$1", [userId]);
 }
 
 // Creates the user, a personal organization (unique slug), and an owner
@@ -54,10 +63,10 @@ export async function findUserById(id) {
 export async function createUserWithOrg(user, orgBaseSlug, orgName) {
   return withTx(async (query) => {
     await query(
-      `INSERT INTO users (id,email,name,password_hash,created_at,terms_accepted_at,privacy_accepted_at,marketing_opt_in,age_confirmed)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      `INSERT INTO users (id,email,name,password_hash,created_at,terms_accepted_at,privacy_accepted_at,marketing_opt_in,age_confirmed,email_verified)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [user.id, user.email, user.name, user.passwordHash, user.createdAt, user.termsAcceptedAt,
-       user.privacyAcceptedAt, user.marketingOptIn, user.ageConfirmed]
+       user.privacyAcceptedAt, user.marketingOptIn, user.ageConfirmed, user.emailVerified === true]
     );
     const slug = await uniqueSlug(query, orgBaseSlug);
     const org = { id: randomUUID(), name: orgName, slug, plan: "Free", createdAt: user.createdAt };
@@ -207,4 +216,65 @@ export async function findReport(id, organizationId) {
   if (!isUuid(id)) return null; // user-supplied id; avoid a uuid-cast error
   const rows = await q("SELECT * FROM reports WHERE id=$1 AND organization_id=$2", [id, organizationId]);
   return mapReport(rows[0]);
+}
+
+// --- login throttling (DB-backed; survives restarts + works across replicas) -
+// Records a failed attempt and returns the resulting lock state atomically.
+export async function recordLoginFailure(key, maxAttempts, lockoutMs) {
+  const rows = await withTx(async (query) => {
+    const cur = (await query("SELECT count, lock_until FROM login_attempts WHERE key=$1 FOR UPDATE", [key]))[0];
+    const count = (cur?.count || 0) + 1;
+    const lockUntil = count >= maxAttempts ? new Date(Date.now() + lockoutMs).toISOString() : null;
+    await query(
+      `INSERT INTO login_attempts (key,count,lock_until,updated_at) VALUES ($1,$2,$3,now())
+       ON CONFLICT (key) DO UPDATE SET count=$2, lock_until=$3, updated_at=now()`,
+      [key, count, lockUntil]
+    );
+    return { count, lockUntil };
+  });
+  return rows;
+}
+
+// Returns remaining lock time in ms, or 0 if not locked. Clears an expired lock.
+export async function loginLockRemaining(key) {
+  const row = (await q("SELECT lock_until FROM login_attempts WHERE key=$1", [key]))[0];
+  if (!row?.lock_until) return 0;
+  const remaining = new Date(row.lock_until).getTime() - Date.now();
+  if (remaining <= 0) {
+    await q("DELETE FROM login_attempts WHERE key=$1", [key]);
+    return 0;
+  }
+  return remaining;
+}
+
+export async function clearLoginFailures(key) {
+  await q("DELETE FROM login_attempts WHERE key=$1", [key]);
+}
+
+// --- auth tokens (email verification + password reset) ---------------------
+// Stores only the SHA-256 of the token; the raw token is sent to the user.
+export async function createAuthToken({ userId, kind, tokenHash, expiresAt }) {
+  const id = randomUUID();
+  // One active token per (user, kind): drop older ones first.
+  await q("DELETE FROM auth_tokens WHERE user_id=$1 AND kind=$2 AND used_at IS NULL", [userId, kind]);
+  await q("INSERT INTO auth_tokens (id,user_id,kind,token_hash,expires_at) VALUES ($1,$2,$3,$4,$5)",
+    [id, userId, kind, tokenHash, expiresAt]);
+}
+
+// Atomically consumes a token: returns userId if valid/unused/unexpired, else null.
+export async function consumeAuthToken(kind, tokenHash) {
+  return withTx(async (query) => {
+    const row = (await query(
+      "SELECT id, user_id, expires_at, used_at FROM auth_tokens WHERE kind=$1 AND token_hash=$2 FOR UPDATE",
+      [kind, tokenHash]
+    ))[0];
+    if (!row || row.used_at) return null;
+    if (new Date(row.expires_at).getTime() < Date.now()) return null;
+    await query("UPDATE auth_tokens SET used_at=now() WHERE id=$1", [row.id]);
+    return row.user_id;
+  });
+}
+
+export async function deleteUserSessions(userId) {
+  await q("DELETE FROM sessions WHERE user_id=$1", [userId]);
 }

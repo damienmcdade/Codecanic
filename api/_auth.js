@@ -7,7 +7,7 @@ const SESSION_DAYS = 14;
 const SESSION_COOKIE = "codecanic_session";
 const KEY_LENGTH = 64;
 
-function isProductionLike() {
+export function isProductionLike() {
   return Boolean(
     process.env.NODE_ENV === "production" ||
       process.env.VERCEL === "1" ||
@@ -37,19 +37,45 @@ export function slugify(value) {
     .slice(0, 48) || `org-${randomBytes(3).toString("hex")}`;
 }
 
+// scrypt cost parameters. Raised from Node's default (N=16384) toward the OWASP
+// 2025 bar. Params are encoded in the stored hash so old hashes still verify and
+// can be transparently upgraded on the next successful login.
+const SCRYPT = { N: 65536, r: 8, p: 1, maxmem: 256 * 1024 * 1024 };
+
 export async function hashPassword(password) {
   const salt = randomBytes(16).toString("hex");
-  const derived = await scryptAsync(password, salt, KEY_LENGTH);
-  return `${salt}:${derived.toString("hex")}`;
+  const derived = await scryptAsync(password, salt, KEY_LENGTH, SCRYPT);
+  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt}$${derived.toString("hex")}`;
 }
 
 export async function verifyPassword(password, stored) {
-  if (!stored || typeof stored !== "string" || !stored.includes(":")) return false;
-  const [salt, hex] = stored.split(":");
-  const derived = await scryptAsync(password, salt, KEY_LENGTH);
+  if (!stored || typeof stored !== "string") return false;
+  let salt, hex, opts;
+  if (stored.startsWith("scrypt$")) {
+    const [, N, r, p, s, h] = stored.split("$");
+    if (!s || !h) return false;
+    salt = s; hex = h;
+    opts = { N: Number(N), r: Number(r), p: Number(p), maxmem: SCRYPT.maxmem };
+  } else if (stored.includes(":")) {
+    // Legacy format: "<saltHex>:<hashHex>" hashed with Node's scrypt defaults.
+    [salt, hex] = stored.split(":");
+    opts = undefined;
+  } else {
+    return false;
+  }
+  const derived = await scryptAsync(password, salt, KEY_LENGTH, opts);
   const expected = Buffer.from(hex, "hex");
   if (expected.length !== derived.length) return false;
   return timingSafeEqual(expected, derived);
+}
+
+// True when a stored hash is below the current cost target and should be
+// re-hashed (legacy format, or a smaller N).
+export function passwordNeedsUpgrade(stored) {
+  if (typeof stored !== "string") return false;
+  if (!stored.startsWith("scrypt$")) return true;
+  const n = Number(stored.split("$")[1]);
+  return !Number.isFinite(n) || n < SCRYPT.N;
 }
 
 function sign(value) {
@@ -141,8 +167,8 @@ export async function currentUserContext(req) {
 
 export function publicUser(user) {
   if (!user) return null;
-  const { id, email, name, createdAt } = user;
-  return { id, email, name, createdAt };
+  const { id, email, name, createdAt, emailVerified } = user;
+  return { id, email, name, createdAt, emailVerified: emailVerified === true };
 }
 
 export function publicOrganization(org) {

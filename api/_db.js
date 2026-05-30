@@ -62,11 +62,30 @@ CREATE TABLE IF NOT EXISTS reports (
   summary jsonb,
   findings jsonb
 );
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key text PRIMARY KEY,
+  count integer NOT NULL DEFAULT 0,
+  lock_until timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind text NOT NULL,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships(organization_id);
 CREATE INDEX IF NOT EXISTS idx_reports_org ON reports(organization_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_creds_org ON connector_creds(organization_id);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id, kind);
+
+-- Additive migrations (idempotent) for existing deployments.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false;
 `;
 
 let backend = null; // { kind, q, withTx, close, truncate }

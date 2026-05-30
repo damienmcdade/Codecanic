@@ -40,6 +40,10 @@ export default async function handler(req, res) {
       json(res, 400, { error: "Create or select an organization before scanning." });
       return;
     }
+    if (!context.user.emailVerified) {
+      json(res, 403, { error: "Verify your email address before scanning.", code: "email_unverified" });
+      return;
+    }
 
     const body = await readBody(req);
     if (!body.sourceUrl) {

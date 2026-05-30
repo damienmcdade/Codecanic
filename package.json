@@ -13,7 +13,8 @@
     "test:scanner": "node scripts/scanner.test.mjs",
     "test:repair": "node scripts/repair.test.mjs",
     "test:db": "node scripts/db.test.mjs",
-    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs"
+    "test:auth": "node scripts/auth.test.mjs",
+    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/auth.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs"
   },
   "keywords": [
     "code-scanning",

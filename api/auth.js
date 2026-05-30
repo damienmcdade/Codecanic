@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { json, readBody } from "./_lib.js";
 import * as repo from "./_repo.js";
+import { sendVerificationEmail, sendPasswordResetEmail, emailConfigured } from "./_email.js";
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -8,6 +9,8 @@ import {
   currentUserContext,
   destroySession,
   hashPassword,
+  isProductionLike,
+  passwordNeedsUpgrade,
   publicOrganization,
   publicUser,
   slugify,
@@ -18,7 +21,8 @@ import {
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
-const loginAttempts = new Map();
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+const RESET_TTL_MS = 60 * 60 * 1000;
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -30,31 +34,41 @@ function clientKey(req, email) {
   return `${ip}|${email}`;
 }
 
-function checkLoginLockout(key) {
-  const entry = loginAttempts.get(key);
-  if (!entry) return null;
-  const now = Date.now();
-  if (entry.lockUntil && entry.lockUntil > now) {
-    return { retryAfterMs: entry.lockUntil - now };
-  }
-  if (entry.lockUntil && entry.lockUntil <= now) {
-    loginAttempts.delete(key);
+// Email verification is enforced when we can actually send mail, or when
+// explicitly required. Without a provider we don't lock users out of a feature
+// they could never unlock, so signups are auto-verified in that case.
+function emailVerificationRequired() {
+  return emailConfigured() || process.env.CODECANIC_REQUIRE_EMAIL_VERIFICATION === "1";
+}
+
+function baseUrl(req) {
+  if (process.env.CODECANIC_APP_URL) return process.env.CODECANIC_APP_URL.replace(/\/$/, "");
+  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
+  return `${proto}://${req.headers.host || "localhost"}`;
+}
+
+const hashToken = (raw) => createHash("sha256").update(raw).digest("hex");
+const newToken = () => randomBytes(32).toString("base64url");
+
+// Validates the shared password policy. Returns an error string or null.
+function passwordPolicyError(password) {
+  if (password.length < 15) return "Password must be at least 15 characters.";
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include uppercase, lowercase, a digit, and a symbol.";
   }
   return null;
 }
 
-function recordLoginFailure(key) {
-  const now = Date.now();
-  const entry = loginAttempts.get(key) || { count: 0, lockUntil: 0 };
-  entry.count += 1;
-  if (entry.count >= LOGIN_MAX_ATTEMPTS) {
-    entry.lockUntil = now + LOGIN_LOCKOUT_MS;
-  }
-  loginAttempts.set(key, entry);
-}
-
-function clearLoginFailures(key) {
-  loginAttempts.delete(key);
+async function issueVerification(user, req) {
+  const raw = newToken();
+  await repo.createAuthToken({
+    userId: user.id, kind: "email_verify", tokenHash: hashToken(raw),
+    expiresAt: new Date(Date.now() + VERIFY_TTL_MS).toISOString()
+  });
+  const link = `${baseUrl(req)}/api/auth/verify-email?token=${raw}`;
+  try { await sendVerificationEmail(user.email, link); } catch (err) { console.error("[verify email]", err.message); }
+  // Only exposed in non-production so the flow is testable without a provider.
+  return isProductionLike() ? undefined : raw;
 }
 
 async function signup(req, res) {
@@ -68,14 +82,9 @@ async function signup(req, res) {
     json(res, 400, { error: "Enter a valid email address." });
     return;
   }
-  if (password.length < 15) {
-    json(res, 400, { error: "Password must be at least 15 characters." });
-    return;
-  }
-  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
-    json(res, 400, {
-      error: "Password must include uppercase, lowercase, a digit, and a symbol."
-    });
+  const pwErr = passwordPolicyError(password);
+  if (pwErr) {
+    json(res, 400, { error: pwErr });
     return;
   }
   if (body.acceptTerms !== true) {
@@ -95,6 +104,7 @@ async function signup(req, res) {
 
   const passwordHash = await hashPassword(password);
   const now = new Date().toISOString();
+  const mustVerify = emailVerificationRequired();
   const user = {
     id: randomUUID(),
     email,
@@ -104,7 +114,8 @@ async function signup(req, res) {
     termsAcceptedAt: now,
     privacyAcceptedAt: now,
     marketingOptIn: body.marketingOptIn === true,
-    ageConfirmed: true
+    ageConfirmed: true,
+    emailVerified: !mustVerify
   };
 
   let createdOrg;
@@ -119,12 +130,16 @@ async function signup(req, res) {
     throw err;
   }
 
+  const devVerifyToken = mustVerify ? await issueVerification(user, req) : undefined;
+
   const token = await createSession(user.id);
   res.setHeader("Set-Cookie", buildSessionCookie(token));
   json(res, 200, {
     user: publicUser(user),
     organizations: [publicOrganization(createdOrg)],
-    activeOrganization: publicOrganization(createdOrg)
+    activeOrganization: publicOrganization(createdOrg),
+    emailVerificationRequired: mustVerify,
+    ...(devVerifyToken ? { devVerifyToken } : {})
   });
 }
 
@@ -134,9 +149,9 @@ async function login(req, res) {
   const password = String(body.password || "");
   const key = clientKey(req, email);
 
-  const lockout = checkLoginLockout(key);
-  if (lockout) {
-    const retryAfter = Math.ceil(lockout.retryAfterMs / 1000);
+  const lockMs = await repo.loginLockRemaining(key);
+  if (lockMs > 0) {
+    const retryAfter = Math.ceil(lockMs / 1000);
     res.setHeader("Retry-After", String(retryAfter));
     json(res, 429, { error: `Too many failed attempts. Try again in ${retryAfter}s.` });
     return;
@@ -145,11 +160,16 @@ async function login(req, res) {
   const user = await repo.findUserByEmail(email);
   const ok = user ? await verifyPassword(password, user.passwordHash) : false;
   if (!user || !ok) {
-    recordLoginFailure(key);
+    await repo.recordLoginFailure(key, LOGIN_MAX_ATTEMPTS, LOGIN_LOCKOUT_MS);
     json(res, 401, { error: "Email or password is incorrect." });
     return;
   }
-  clearLoginFailures(key);
+  await repo.clearLoginFailures(key);
+
+  // Transparently upgrade legacy/low-cost password hashes on successful login.
+  if (passwordNeedsUpgrade(user.passwordHash)) {
+    try { await repo.updateUserPassword(user.id, await hashPassword(password)); } catch (err) { console.error("[rehash]", err.message); }
+  }
 
   const organizations = (await repo.organizationsForUser(user.id)).map(publicOrganization);
 
@@ -266,6 +286,90 @@ async function me(req, res) {
   });
 }
 
+function verifiedHtml(title, message, okState) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>
+<body style="font-family:system-ui;padding:32px;background:#0a1019;color:#f8fafc;">
+<h1 style="color:${okState ? "#14b8a6" : "#f87171"};">${title}</h1>
+<p>${message}</p>
+<p><a href="/" style="color:#2dd4bf;">Return to Codecanic</a></p>
+</body></html>`;
+}
+
+async function verifyEmail(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  // Accept the token from the email link (GET ?token=) or a JSON body (POST).
+  let raw = url.searchParams.get("token");
+  if (!raw && req.method === "POST") raw = String((await readBody(req)).token || "");
+  const userId = raw ? await repo.consumeAuthToken("email_verify", hashToken(raw)) : null;
+  if (userId) await repo.markEmailVerified(userId);
+
+  if (req.method === "GET") {
+    res.writeHead(userId ? 200 : 400, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(userId
+      ? verifiedHtml("Email verified", "Your email is confirmed. You can start scanning repositories.", true)
+      : verifiedHtml("Verification failed", "This link is invalid or has expired. Sign in and request a new one.", false));
+    return;
+  }
+  if (!userId) {
+    json(res, 400, { error: "This verification link is invalid or has expired." });
+    return;
+  }
+  json(res, 200, { status: "email_verified" });
+}
+
+async function resendVerification(req, res) {
+  const context = await currentUserContext(req);
+  if (!context) {
+    json(res, 401, { error: "Sign in to resend verification." });
+    return;
+  }
+  if (context.user.emailVerified) {
+    json(res, 200, { status: "already_verified" });
+    return;
+  }
+  const devToken = await issueVerification(context.user, req);
+  json(res, 200, { status: "verification_sent", ...(devToken ? { devVerifyToken: devToken } : {}) });
+}
+
+async function requestPasswordReset(req, res) {
+  const email = normalizeEmail((await readBody(req)).email);
+  let devToken;
+  const user = email ? await repo.findUserByEmail(email) : null;
+  if (user) {
+    const raw = newToken();
+    await repo.createAuthToken({
+      userId: user.id, kind: "password_reset", tokenHash: hashToken(raw),
+      expiresAt: new Date(Date.now() + RESET_TTL_MS).toISOString()
+    });
+    const link = `${baseUrl(req)}/reset-password?token=${raw}`;
+    try { await sendPasswordResetEmail(user.email, link); } catch (err) { console.error("[reset email]", err.message); }
+    if (!isProductionLike()) devToken = raw;
+  }
+  // Always generic to prevent account enumeration.
+  json(res, 200, { status: "reset_requested", message: "If an account exists for that email, a reset link has been sent.", ...(devToken ? { devResetToken: devToken } : {}) });
+}
+
+async function resetPassword(req, res) {
+  const body = await readBody(req);
+  const raw = String(body.token || "");
+  const password = String(body.password || "");
+  const pwErr = passwordPolicyError(password);
+  if (pwErr) {
+    json(res, 400, { error: pwErr });
+    return;
+  }
+  const userId = raw ? await repo.consumeAuthToken("password_reset", hashToken(raw)) : null;
+  if (!userId) {
+    json(res, 400, { error: "This reset link is invalid or has expired." });
+    return;
+  }
+  await repo.updateUserPassword(userId, await hashPassword(password));
+  // Invalidate all existing sessions so a leaked session can't outlive a reset.
+  await repo.deleteUserSessions(userId);
+  res.setHeader("Set-Cookie", clearSessionCookie());
+  json(res, 200, { status: "password_reset" });
+}
+
 export default async function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const action = url.pathname.replace(/^\/api\/auth\/?/, "");
@@ -274,6 +378,10 @@ export default async function handler(req, res) {
     if (action === "login" && req.method === "POST") return await login(req, res);
     if (action === "logout" && req.method === "POST") return await logout(req, res);
     if (action === "me" && req.method === "GET") return await me(req, res);
+    if (action === "verify-email" && (req.method === "GET" || req.method === "POST")) return await verifyEmail(req, res);
+    if (action === "resend-verification" && req.method === "POST") return await resendVerification(req, res);
+    if (action === "request-password-reset" && req.method === "POST") return await requestPasswordReset(req, res);
+    if (action === "reset-password" && req.method === "POST") return await resetPassword(req, res);
     if (action === "account" && (req.method === "DELETE" || req.method === "POST")) {
       return await deleteAccount(req, res);
     }

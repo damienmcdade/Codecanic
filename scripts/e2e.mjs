@@ -79,7 +79,8 @@ const child = spawn(process.execPath, ["server.js"], {
     CODECANIC_DATA_DIR: dataDir,
     CODECANIC_SESSION_SECRET: "e2e-secret-not-for-prod-0123456789",
     CODECANIC_ENCRYPTION_KEY: "e2e-encryption-key-0123456789abcd",
-    CODECANIC_ALLOWED_ORIGINS: ORIGIN
+    CODECANIC_ALLOWED_ORIGINS: ORIGIN,
+    CODECANIC_REQUIRE_EMAIL_VERIFICATION: "1"
   },
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -146,7 +147,7 @@ try {
   }
 
   // 5. Signup happy path --------------------------------------------------
-  let orgSlug;
+  let orgSlug, verifyToken;
   {
     const r = await call("POST", "/api/auth/signup", {
       body: {
@@ -160,7 +161,31 @@ try {
     ok("signup happy → 200 + user", r.status === 200 && !!r.json?.user, `status=${r.status} ${r.text.slice(0,80)}`);
     ok("signup sets session cookie", /codecanic_session=/.test(jar), jar.slice(0, 30));
     ok("signup provisions active organization", !!r.json?.activeOrganization?.slug);
+    ok("signup flags email verification required", r.json?.emailVerificationRequired === true);
+    ok("new user starts unverified", r.json?.user?.emailVerified === false);
     orgSlug = r.json?.activeOrganization?.slug;
+    verifyToken = r.json?.devVerifyToken;
+  }
+
+  // 5b. Email verification gate -------------------------------------------
+  console.log("\nEmail verification");
+  {
+    // Sensitive features are blocked until the email is verified.
+    const blocked = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { sourceUrl: "https://github.com/x/y" } });
+    ok("scan blocked before verification → 403", blocked.status === 403 && blocked.json?.code === "email_unverified", `status=${blocked.status}`);
+    ok("dev verification token was issued", !!verifyToken);
+
+    const bad = await call("POST", "/api/auth/verify-email", { body: { token: "not-a-real-token" } });
+    ok("bad verification token → 400", bad.status === 400, `status=${bad.status}`);
+
+    const verified = await call("POST", "/api/auth/verify-email", { body: { token: verifyToken } });
+    ok("valid token verifies email → 200", verified.status === 200, `status=${verified.status} ${verified.text.slice(0,80)}`);
+
+    const me = await call("GET", "/api/auth/me", { origin: null });
+    ok("me now shows emailVerified=true", me.json?.user?.emailVerified === true);
+
+    const reuse = await call("POST", "/api/auth/verify-email", { body: { token: verifyToken } });
+    ok("verification token is single-use → 400", reuse.status === 400, `status=${reuse.status}`);
   }
 
   // 6. me authed ----------------------------------------------------------
@@ -295,18 +320,57 @@ try {
     ok("session restored after login", me.json?.user?.email === "owner@codecanic.local");
   }
 
+  // 15b. Login lockout (DB-backed) — use a separate key so the owner isn't locked.
+  console.log("\nLogin lockout");
+  {
+    let last;
+    for (let i = 0; i < 5; i++) {
+      last = await call("POST", "/api/auth/login", { body: { email: "lockme@codecanic.local", password: "nope-Pass-1!" } });
+    }
+    const sixth = await call("POST", "/api/auth/login", { body: { email: "lockme@codecanic.local", password: "nope-Pass-1!" } });
+    ok("locks out after repeated failures → 429", sixth.status === 429, `status=${sixth.status}`);
+    ok("429 includes Retry-After header", !!sixth.headers.get("retry-after"));
+  }
+
+  // 15c. Password reset ----------------------------------------------------
+  console.log("\nPassword reset");
+  const NEW_PW = "Owner-Pass-456!";
+  {
+    const unknown = await call("POST", "/api/auth/request-password-reset", { body: { email: "ghost@codecanic.local" } });
+    ok("reset request is generic for unknown email → 200", unknown.status === 200 && !unknown.json?.devResetToken, `status=${unknown.status}`);
+
+    const reqReset = await call("POST", "/api/auth/request-password-reset", { body: { email: "owner@codecanic.local" } });
+    ok("reset request for real email → 200 + dev token", reqReset.status === 200 && !!reqReset.json?.devResetToken, `status=${reqReset.status}`);
+    const resetToken = reqReset.json?.devResetToken;
+
+    const weak = await call("POST", "/api/auth/reset-password", { body: { token: resetToken, password: "weak" } });
+    ok("reset rejects weak password → 400", weak.status === 400, `status=${weak.status}`);
+
+    const done = await call("POST", "/api/auth/reset-password", { body: { token: resetToken, password: NEW_PW } });
+    ok("reset with valid token → 200", done.status === 200, `status=${done.status} ${done.text.slice(0,80)}`);
+
+    const oldLogin = await call("POST", "/api/auth/login", { body: { email: "owner@codecanic.local", password: "Owner-Pass-123!" } });
+    ok("old password no longer works → 401", oldLogin.status === 401, `status=${oldLogin.status}`);
+
+    const reuse = await call("POST", "/api/auth/reset-password", { body: { token: resetToken, password: NEW_PW } });
+    ok("reset token is single-use → 400", reuse.status === 400, `status=${reuse.status}`);
+
+    const newLogin = await call("POST", "/api/auth/login", { body: { email: "owner@codecanic.local", password: NEW_PW } });
+    ok("new password works → 200", newLogin.status === 200 && newLogin.json?.user?.email === "owner@codecanic.local", `status=${newLogin.status}`);
+  }
+
   // 16. Account deletion --------------------------------------------------
   {
     // Deletion is defense-in-depth: requires password re-entry AND typing "DELETE".
     const noPw = await call("DELETE", "/api/auth/account", { body: { confirm: "DELETE" } });
     ok("delete without password → 422", noPw.status === 422, `status=${noPw.status}`);
-    const wrongConfirm = await call("DELETE", "/api/auth/account", { body: { password: "Owner-Pass-123!", confirm: "yes" } });
+    const wrongConfirm = await call("DELETE", "/api/auth/account", { body: { password: NEW_PW, confirm: "yes" } });
     ok("delete without typing DELETE → 422", wrongConfirm.status === 422, `status=${wrongConfirm.status}`);
-    const r = await call("DELETE", "/api/auth/account", { body: { password: "Owner-Pass-123!", confirm: "DELETE" } });
+    const r = await call("DELETE", "/api/auth/account", { body: { password: NEW_PW, confirm: "DELETE" } });
     ok("DELETE /api/auth/account → 2xx", r.status >= 200 && r.status < 300, `status=${r.status} ${r.text.slice(0,80)}`);
     const me = await call("GET", "/api/auth/me", { origin: null });
     ok("account gone after delete", me.json?.user === null, `user=${JSON.stringify(me.json?.user)}`);
-    const relog = await call("POST", "/api/auth/login", { body: { email: "owner@codecanic.local", password: "Owner-Pass-123!" } });
+    const relog = await call("POST", "/api/auth/login", { body: { email: "owner@codecanic.local", password: NEW_PW } });
     ok("deleted account cannot log back in", relog.status === 401, `status=${relog.status}`);
   }
 

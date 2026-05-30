@@ -39,6 +39,10 @@ export default async function handler(req, res) {
       json(res, 400, { error: "Create or select an organization before approving repairs." });
       return;
     }
+    if (!context.user.emailVerified) {
+      json(res, 403, { error: "Verify your email address before approving repairs.", code: "email_unverified" });
+      return;
+    }
 
     const body = await readBody(req);
     const findingIds = Array.isArray(body.findingIds) ? body.findingIds : [];

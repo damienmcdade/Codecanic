@@ -33,7 +33,11 @@ npm run dev
 - `POST /api/auth/signup` creates a user, provisions a personal workspace, and sets a signed session cookie.
 - `POST /api/auth/login` authenticates an existing user and returns their organizations.
 - `POST /api/auth/logout` invalidates the active session.
-- `GET /api/auth/me` returns the current user + memberships, or `{ user: null }` for guests.
+- `GET /api/auth/me` returns the current user + memberships (incl. `emailVerified`), or `{ user: null }` for guests.
+- `GET|POST /api/auth/verify-email?token=...` confirms an email (GET renders a page for the email link; POST is JSON).
+- `POST /api/auth/resend-verification` re-issues a verification email for the signed-in user.
+- `POST /api/auth/request-password-reset` sends a reset link (always a generic 200, to prevent account enumeration).
+- `POST /api/auth/reset-password` consumes a reset token, sets a new password, and invalidates all existing sessions.
 - `GET /api/orgs` lists organizations the signed-in user belongs to.
 - `POST /api/orgs` creates a new organization owned by the signed-in user.
 - `GET /api/connectors?name=GitHub` returns connector authorization status; when the matching client ID is set and the user is signed in, it returns a one-time signed OAuth URL.
@@ -75,6 +79,16 @@ Codecanic uses **Postgres** via a small relational schema (`api/_db.js` + `api/_
 
 Durability across restarts, unique constraints, and cascading integrity are proven by `npm run test:db`.
 
+## Authentication
+
+- **Passwords** are hashed with scrypt at a raised cost (`N=65536, r=8, p=1`), with the parameters encoded in each stored hash. Legacy hashes still verify and are transparently re-hashed to the new cost on the next successful login.
+- **Login throttling** is DB-backed (`login_attempts`): 5 failures per IP+email lock for 15 minutes. Unlike the previous in-memory counter, this survives restarts and works across replicas.
+- **Email verification** — signups create a single-use, 24h token (only its SHA-256 is stored); scanning/repair are gated on a verified email. Enforced when an email provider is configured or `CODECANIC_REQUIRE_EMAIL_VERIFICATION=1`; otherwise signups are auto-verified.
+- **Password reset** — single-use 1h token, generic responses (no account enumeration), and **all sessions are invalidated** on reset.
+- **Email delivery** is pluggable (`api/_email.js`): Resend when `RESEND_API_KEY` is set, otherwise logged in dev. Tokens are returned in API responses **only** in non-production, so flows are testable without a provider.
+
+Proven by `npm run test:auth` (hashing upgrade, DB lockout incl. restart-persistence, single-use token lifecycle) and the end-to-end `npm run e2e` (verification gate, lockout, full reset flow).
+
 ## Deployment Targets
 
 - Vercel: static web deployment is ready through `vercel.json`.
@@ -89,6 +103,7 @@ Durability across restarts, unique constraints, and cascading integrity are prov
 3. ~~Build a real scan engine.~~ ✓ v1 clones the repo and runs real dependency SCA (OSV.dev), secret scanning, and hygiene checks (`api/_scanner.js`).
 4. ~~Make repair real.~~ ✓ v1 generates patches and opens a real GitHub pull request, with manual items in the PR body (`api/_repair.js`). Next: rerun validation/tests on the patched branch and add CI-based merge-confidence before proposing.
 5. ~~Migrate the datastore to Postgres.~~ ✓ Relational schema with cascades + indexes; `pg` in prod, embedded PGlite locally (`api/_db.js`, `api/_repo.js`).
-6. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
-7. Auth hardening: email verification, password reset, raise the scrypt cost, move login lockout into the DB. Add error tracking (Sentry) + structured logging.
-8. Add mobile packaging with Capacitor for iOS and Android.
+6. ~~Auth hardening.~~ ✓ Email verification, password reset, raised scrypt cost (with transparent upgrade), and DB-backed login lockout. Pluggable email via Resend (`api/_email.js`).
+7. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
+8. Add error tracking (Sentry) + structured request logging; wire the frontend verify/reset pages.
+9. Add mobile packaging with Capacitor for iOS and Android.
