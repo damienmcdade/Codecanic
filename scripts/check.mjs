@@ -16,6 +16,7 @@ const requiredFiles = [
   "api/_lib.js",
   "api/_auth.js",
   "api/_data.js",
+  "api/_scanner.js",
   "api/auth.js",
   "api/orgs.js",
   "api/oauth.js",
@@ -120,21 +121,18 @@ async function authedInvoke(handler, method, body, path = "/api/test") {
   });
 }
 
+// The scan handler is wired to the real engine (which clones over the network);
+// deterministic detection is proven offline by scripts/scanner.test.mjs. Here we
+// only assert the contract that needs no network: a missing URL is a clean 400.
 resetCache();
-const scan = await authedInvoke(scanHandler, "POST", {
-  sourceUrl: "https://github.com/damienmcdade/Codecanic",
-  scanDepth: "full",
-  tier: "Pro"
-}, "/api/scan");
-
-if (!scan.data?.findings?.length || scan.data.summary.critical < 1) {
-  throw new Error("Scan API did not return a usable report.");
+const scanNoUrl = await authedInvoke(scanHandler, "POST", { scanDepth: "full" }, "/api/scan");
+if (scanNoUrl.res.statusCode !== 400) {
+  throw new Error(`Scan API should reject a missing URL with 400 (got ${scanNoUrl.res.statusCode}).`);
 }
 
 const repair = await authedInvoke(repairHandler, "POST", {
-  findingIds: [scan.data.findings[0].id],
-  tier: "Pro",
-  reportId: scan.data.id
+  findingIds: ["secret:aws-access-key:config.js:12"],
+  tier: "Pro"
 }, "/api/repair");
 
 if (!repair.data?.branchName || repair.data.status !== "queued") {

@@ -10,7 +10,8 @@
     "dev": "node server.js",
     "check": "node scripts/check.mjs",
     "e2e": "node scripts/e2e.mjs",
-    "test": "node scripts/check.mjs && node scripts/e2e.mjs"
+    "test:scanner": "node scripts/scanner.test.mjs",
+    "test": "node scripts/check.mjs && node scripts/scanner.test.mjs && node scripts/e2e.mjs"
   },
   "keywords": [
     "code-scanning",

@@ -208,23 +208,38 @@ try {
   }
 
   // 11. Scan + Repair -----------------------------------------------------
-  console.log("\nScan & Repair (core product)");
-  let findingId, reportId;
+  console.log("\nScan & Repair (core product — REAL engine)");
   {
-    const scan = await call("POST", `/api/scan?organization=${orgSlug}`, {
-      body: { sourceUrl: "https://github.com/damienmcdade/Codecanic", scanDepth: "full" }
-    });
-    ok("POST /api/scan → findings report", scan.status === 200 && scan.json?.findings?.length > 0, `status=${scan.status} ${scan.text.slice(0,80)}`);
-    ok("scan summary has critical count", typeof scan.json?.summary?.critical === "number");
-    ok("findings have severity+target", scan.json?.findings?.every((f) => f.severity), "missing severity");
-    findingId = scan.json?.findings?.[0]?.id;
-    reportId = scan.json?.id;
+    // Contract checks that need no network:
+    const noUrl = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { scanDepth: "full" } });
+    ok("scan without URL → 400", noUrl.status === 400, `status=${noUrl.status}`);
+    const badHost = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { sourceUrl: "https://evil.example.com/o/r" } });
+    ok("scan of non-allowlisted host → 400", badHost.status === 400, `status=${badHost.status}`);
+    const badProto = await call("POST", `/api/scan?organization=${orgSlug}`, { body: { sourceUrl: "http://github.com/o/r" } });
+    ok("scan of non-https URL → 400", badProto.status === 400, `status=${badProto.status}`);
 
+    // Live scan of a real public repo (needs git + network). Skip cleanly if offline.
+    const scan = await call("POST", `/api/scan?organization=${orgSlug}`, {
+      body: { sourceUrl: "https://github.com/sindresorhus/slugify", scanDepth: "full" }
+    });
+    if (scan.status === 200) {
+      ok("live scan → real-v1 engine report", scan.json?.engine === "real-v1", `engine=${scan.json?.engine}`);
+      ok("scan returns a findings array", Array.isArray(scan.json?.findings), `type=${typeof scan.json?.findings}`);
+      ok("scan summary has numeric counts", typeof scan.json?.summary?.critical === "number" && typeof scan.json?.summary?.total === "number");
+      ok("scan reports the resolved repository + commit", !!scan.json?.repository?.commit, `repo=${JSON.stringify(scan.json?.repository)}`);
+      ok("scan reports what it actually walked", typeof scan.json?.scanned?.filesWalked === "number");
+      ok("findings (if any) carry severity+target", (scan.json?.findings || []).every((f) => f.severity && f.target));
+    } else if (scan.status === 422 || scan.status === 502) {
+      console.log(`  ⊘ SKIP live scan — repo unreachable in this env (status=${scan.status}: ${scan.json?.error || ""})`);
+    } else {
+      ok("live scan returned a usable status", false, `unexpected status=${scan.status} ${scan.text.slice(0,100)}`);
+    }
+
+    // Repair contract (still a stub; decoupled from scan output).
     const repair = await call("POST", `/api/repair?organization=${orgSlug}`, {
-      body: { findingIds: [findingId], reportId }
+      body: { findingIds: ["secret:aws-access-key:config.js:12"] }
     });
     ok("POST /api/repair → queued + branch", repair.status === 200 && repair.json?.status === "queued" && !!repair.json?.branchName, `status=${repair.status} ${repair.text.slice(0,80)}`);
-
     const empty = await call("POST", `/api/repair?organization=${orgSlug}`, { body: { findingIds: [] } });
     ok("repair with no findings → 400", empty.status === 400);
   }

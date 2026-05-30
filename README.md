@@ -40,8 +40,18 @@ npm run dev
 - `GET /api/oauth/callback?provider=...&code=...&state=...` is the redirect target; it verifies the signed state, exchanges the code for an access token, and persists credentials scoped to the active organization.
 - `GET /api/oauth/status` lists provider connections for the active organization.
 - `GET /api/health` returns deployment identity for Vercel/Railway sync checks.
-- `POST /api/scan` creates a scan job for the active organization and returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query.
-- `POST /api/repair` queues approved findings for patch generation and pull request preparation (auth-gated).
+- `POST /api/scan` runs the **real v1 scan engine** against `sourceUrl` (an `https://github.com|gitlab.com|bitbucket.org/owner/repo` URL): it shallow-clones the repo (using the organization's connected provider token for private repos), then returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query. Private repos with no connected provider return `422` (not fabricated findings); unsupported hosts/URLs return `400`.
+- `POST /api/repair` queues approved findings (auth-gated). **Note: repair is still a stub** — it returns a branch name and next-step plan but does not yet generate patches or open pull requests.
+
+### Scan engine (v1)
+
+`api/_scanner.js` performs genuine analysis of the cloned tree:
+
+- **Dependency SCA** — parses `package-lock.json` / `yarn.lock` / `package.json` (npm) and `requirements.txt` (PyPI), then queries [OSV.dev](https://osv.dev) for known vulnerabilities (real CVEs, severity, references).
+- **Secret scanning** — gitleaks-style regex + entropy over text files (AWS keys, GitHub/GitLab tokens, Slack, Google, Stripe, private keys, JWTs, high-entropy assignments); matches are redacted in output and `.example`/`.sample` files are ignored.
+- **Repo hygiene** — committed `.env`/key files, `.npmrc` auth tokens, TypeScript `strict` disabled, missing lockfile, missing CI pipeline.
+
+Bounded for safety: https-only SSRF-allowlisted hosts, shallow `--depth 1` clone with a timeout, file/size/finding caps, and the temp checkout is always deleted. Proven by `npm run test:scanner`.
 
 Copy `.env.example` into your deployment environment and fill in the provider credentials owned by your company. Each OAuth-capable provider needs both `*_CLIENT_ID` and `*_CLIENT_SECRET`; sessions are signed with `CODECANIC_SESSION_SECRET`.
 
@@ -56,6 +66,7 @@ Copy `.env.example` into your deployment environment and fill in the provider cr
 
 1. ~~Add authentication and organization workspaces.~~ ✓ Session cookies + JSON-file user/org/membership store at `${CODECANIC_DATA_DIR}/codecanic.json`.
 2. ~~Implement real connector OAuth flows.~~ ✓ Signed-state authorization URL → `/api/oauth/callback` → provider-specific token exchange (GitHub, Vercel, GitLab, Bitbucket); per-org credentials persisted.
-3. Build backend scan and repair job queues (currently synchronous stubs).
-4. Add pull request generation with approval/audit controls.
+3. ~~Build a real scan engine.~~ ✓ v1 clones the repo and runs real dependency SCA (OSV.dev), secret scanning, and hygiene checks (`api/_scanner.js`). Repair remains a stub.
+4. Make repair real: generate patches, rerun validation, and open pull requests with approval/audit controls.
+5. Add async scan/repair job queues (scans are currently synchronous per request).
 5. Add mobile packaging with Capacitor for iOS and Android.
