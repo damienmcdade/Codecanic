@@ -26,5 +26,9 @@ android/keystore.properties
 ios/Codecanic/build/
 ios/Codecanic/DerivedData/
 
+# Tooling / link state (not source)
+.vercel/
+.codecanic/
+
 # OS
 .DS_Store
