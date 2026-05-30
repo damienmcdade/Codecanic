@@ -21,7 +21,6 @@ const requiredFiles = [
   "api/oauth.js",
   "api/scan.js",
   "api/repair.js",
-  "api/checkout.js",
   "api/connectors.js",
   "api/health.js",
   ".env.example"
@@ -32,7 +31,7 @@ for (const file of requiredFiles) {
 }
 
 const html = await readFile("index.html", "utf8");
-for (const marker of ["Codecanic", "Connectors", "Findings report", "Free with ads, or $20 ad-free"]) {
+for (const marker of ["Codecanic", "Connectors", "Findings report", "Free for everyone", "Sponsor-supported"]) {
   if (!html.includes(marker)) {
     throw new Error(`Missing expected UI marker: ${marker}`);
   }
@@ -95,8 +94,10 @@ async function invoke(handler, method, body, options = {}) {
 
 const signupRes = await invoke(authHandler, "POST", {
   email: "checker@codecanic.local",
-  password: "check-password-123",
-  organization: "Codecanic Check"
+  password: "Check-Password-123!",
+  organization: "Codecanic Check",
+  acceptTerms: true,
+  age: 30
 }, { path: "/api/auth/signup" });
 
 if (!signupRes.data?.user) {
