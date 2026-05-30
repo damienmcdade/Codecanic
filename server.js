@@ -10,6 +10,8 @@ import oauth from "./api/oauth.js";
 import orgs from "./api/orgs.js";
 import repair from "./api/repair.js";
 import scan from "./api/scan.js";
+import { logger, newRequestId } from "./api/_log.js";
+import { initObservability, captureException, flushObservability } from "./api/_observability.js";
 
 const port = Number(process.env.PORT || 3000);
 const publicDir = join(process.cwd(), "public");
@@ -141,8 +143,31 @@ function originAllowed(req) {
 }
 
 const server = createServer(async (req, res) => {
+  const startedAt = Date.now();
+  const reqId = newRequestId();
+  req.id = reqId;
+  res.setHeader("X-Request-Id", reqId);
   applySecurityHeaders(req, res);
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+  // Log every request on completion. Only the pathname is logged — never the
+  // query string (it can carry verification/reset tokens) or the body.
+  res.on("finish", () => {
+    logger.info("request", {
+      reqId, method: req.method, path: url.pathname,
+      status: res.statusCode, durationMs: Date.now() - startedAt
+    });
+  });
+
+  async function runHandler(handler) {
+    try {
+      await handler(req, res);
+    } catch (err) {
+      logger.error("handler_error", { reqId, path: url.pathname, err });
+      captureException(err, { reqId, path: url.pathname, method: req.method });
+      if (!res.headersSent) send(res, 500, JSON.stringify({ error: "Internal error." }), "application/json; charset=utf-8");
+    }
+  }
 
   if (
     stateChangingMethods.has(req.method) &&
@@ -155,27 +180,10 @@ const server = createServer(async (req, res) => {
   }
 
   const handler = exactRoutes.get(url.pathname);
-
-  if (handler) {
-    try {
-      await handler(req, res);
-    } catch (err) {
-      console.error("[handler error]", err);
-      if (!res.headersSent) send(res, 500, JSON.stringify({ error: "Internal error." }), "application/json; charset=utf-8");
-    }
-    return;
-  }
+  if (handler) return void (await runHandler(handler));
 
   const prefixed = prefixRoutes.find(({ prefix }) => url.pathname.startsWith(prefix));
-  if (prefixed) {
-    try {
-      await prefixed.handler(req, res);
-    } catch (err) {
-      console.error("[handler error]", err);
-      if (!res.headersSent) send(res, 500, JSON.stringify({ error: "Internal error." }), "application/json; charset=utf-8");
-    }
-    return;
-  }
+  if (prefixed) return void (await runHandler(prefixed.handler));
 
   if (req.method !== "GET" && req.method !== "HEAD") {
     send(res, 405, "Method not allowed");
@@ -185,8 +193,22 @@ const server = createServer(async (req, res) => {
   await serveStatic(req, res);
 });
 
+initObservability();
+
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Codecanic server listening on port ${port}`);
+  logger.info("server.listening", { port });
+});
+
+// Last-resort handlers so a stray rejection/exception is reported, not silent.
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandledRejection", { err: reason });
+  captureException(reason instanceof Error ? reason : new Error(String(reason)), { kind: "unhandledRejection" });
+});
+process.on("uncaughtException", async (err) => {
+  logger.error("uncaughtException", { err });
+  await captureException(err, { kind: "uncaughtException" });
+  await flushObservability();
+  process.exit(1);
 });
 
 // Graceful shutdown: stop accepting connections, drain in-flight requests, then
@@ -195,14 +217,15 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`[shutdown] ${signal} received, draining...`);
-  const force = setTimeout(() => { console.error("[shutdown] forced exit"); process.exit(1); }, 10_000);
+  logger.info("shutdown.start", { signal });
+  const force = setTimeout(() => { logger.error("shutdown.forced"); process.exit(1); }, 10_000);
   force.unref();
   server.close(async () => {
     try {
       const { closeDb } = await import("./api/_db.js");
       await closeDb();
     } catch {}
+    await flushObservability();
     clearTimeout(force);
     process.exit(0);
   });

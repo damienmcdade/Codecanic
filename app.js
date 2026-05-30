@@ -263,6 +263,8 @@ function renderAccount() {
     signedOut.hidden = false;
     signedIn.hidden = true;
   }
+  const banner = document.querySelector("#verify-banner");
+  if (banner) banner.hidden = !(session.user && session.user.emailVerified === false);
 }
 
 function renderAll() {
@@ -367,6 +369,73 @@ async function signOut() {
   audit("Signed out");
   renderAll();
   showToast("Signed out.");
+}
+
+async function resendVerification() {
+  try {
+    await api("/api/auth/resend-verification", { method: "POST" });
+    showToast("Verification email sent. Check your inbox.");
+  } catch (error) {
+    showToast(error.message || "Could not send verification email.");
+  }
+}
+
+async function requestPasswordReset() {
+  const email = document.querySelector("#auth-form")?.querySelector('input[name="email"]')?.value?.trim();
+  if (!email) {
+    const errorEl = document.querySelector("#auth-error");
+    errorEl.textContent = "Enter your email above, then click “Forgot password?”.";
+    errorEl.hidden = false;
+    return;
+  }
+  try {
+    await api("/api/auth/request-password-reset", { method: "POST", body: JSON.stringify({ email }) });
+  } catch {
+    /* generic by design */
+  }
+  showToast("If an account exists for that email, a reset link is on its way.");
+}
+
+function openResetModal(token) {
+  const modal = document.querySelector("#reset-modal");
+  if (!modal) return;
+  modal.dataset.token = token || "";
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeResetModal() {
+  const modal = document.querySelector("#reset-modal");
+  if (!modal) return;
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+  document.querySelector("#reset-error").hidden = true;
+  document.querySelector("#reset-form").reset();
+  // Drop the token from the URL so it isn't re-triggered or left in history.
+  if (location.pathname === "/reset-password") history.replaceState(null, "", "/");
+}
+
+async function submitResetPassword(form) {
+  const fd = new FormData(form);
+  const password = String(fd.get("password") || "");
+  const confirm = String(fd.get("confirm") || "");
+  const errorEl = document.querySelector("#reset-error");
+  errorEl.hidden = true;
+  if (password !== confirm) {
+    errorEl.textContent = "Passwords do not match.";
+    errorEl.hidden = false;
+    return;
+  }
+  const token = document.querySelector("#reset-modal")?.dataset.token || "";
+  try {
+    await api("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) });
+    closeResetModal();
+    showToast("Password updated. Please sign in.");
+    openAuthModal("signin");
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.hidden = false;
+  }
 }
 
 const legalText = {
@@ -1422,12 +1491,25 @@ document.querySelector("#scan-form").addEventListener("submit", (event) => {
     showToast("Sign in to start a scan.");
     return;
   }
+  if (session.user.emailVerified === false) {
+    document.querySelector("#verify-banner").hidden = false;
+    showToast("Verify your email address before scanning.");
+    return;
+  }
   runScan();
 });
 
 document.querySelector("#auth-form").addEventListener("submit", (event) => {
   event.preventDefault();
   submitAuth(event.currentTarget);
+});
+
+document.querySelector("#resend-verify")?.addEventListener("click", resendVerification);
+document.querySelector("#forgot-password")?.addEventListener("click", requestPasswordReset);
+document.querySelector("#reset-close")?.addEventListener("click", closeResetModal);
+document.querySelector("#reset-form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitResetPassword(event.currentTarget);
 });
 
 document.querySelector("#delete-confirm-input").addEventListener("input", updateDeleteSubmitState);
@@ -1459,3 +1541,9 @@ syncActiveNavigation();
 refreshSession();
 maybeShowCookieBanner();
 loadAdSlots();
+
+// Password-reset deep link: /reset-password?token=... (served as the SPA shell).
+if (location.pathname === "/reset-password") {
+  const token = new URLSearchParams(location.search).get("token");
+  if (token) openResetModal(token);
+}

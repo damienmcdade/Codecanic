@@ -82,7 +82,7 @@ const child = spawn(process.execPath, ["server.js"], {
     CODECANIC_ALLOWED_ORIGINS: ORIGIN,
     CODECANIC_REQUIRE_EMAIL_VERIFICATION: "1"
   },
-  stdio: ["ignore", "pipe", "pipe"]
+  stdio: ["ignore", "ignore", "pipe"] // ignore stdout (structured request logs) to avoid pipe-buffer backpressure
 });
 child.stderr.on("data", (d) => process.stderr.write(`[server] ${d}`));
 

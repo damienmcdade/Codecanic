@@ -80,6 +80,11 @@
           </div>
         </header>
 
+        <div class="verify-banner" id="verify-banner" role="status" hidden>
+          <span>Please verify your email address to start scanning. Check your inbox for the link.</span>
+          <button class="secondary" type="button" id="resend-verify">Resend email</button>
+        </div>
+
         <aside class="ad-slot ad-slot-banner" aria-label="Sponsored ad">
           <span class="ad-label">Sponsored</span>
           <ins class="adsbygoogle ad-unit"
@@ -484,6 +489,30 @@
           </label>
           <p class="auth-error" id="auth-error" hidden></p>
           <button class="primary" type="submit" id="auth-submit">Sign in</button>
+          <p class="auth-forgot" data-auth-only="signin">
+            <button type="button" class="link-button" id="forgot-password">Forgot password?</button>
+          </p>
+        </form>
+      </div>
+    </div>
+
+    <div class="auth-modal" id="reset-modal" hidden aria-hidden="true">
+      <div class="auth-modal-card" role="dialog" aria-labelledby="reset-modal-title">
+        <header>
+          <h2 id="reset-modal-title">Set a new password</h2>
+          <button class="icon-button" type="button" id="reset-close" aria-label="Close">×</button>
+        </header>
+        <form id="reset-form">
+          <label>
+            <span>New password <small class="muted">(15+ chars, upper + lower + digit + symbol)</small></span>
+            <input name="password" type="password" autocomplete="new-password" required />
+          </label>
+          <label>
+            <span>Confirm new password</span>
+            <input name="confirm" type="password" autocomplete="new-password" required />
+          </label>
+          <p class="auth-error" id="reset-error" hidden></p>
+          <button class="primary" type="submit" id="reset-submit">Update password</button>
         </form>
       </div>
     </div>

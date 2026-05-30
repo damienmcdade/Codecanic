@@ -89,6 +89,15 @@ Durability across restarts, unique constraints, and cascading integrity are prov
 
 Proven by `npm run test:auth` (hashing upgrade, DB lockout incl. restart-persistence, single-use token lifecycle) and the end-to-end `npm run e2e` (verification gate, lockout, full reset flow).
 
+The web UI surfaces these: an **email-verification banner** with a resend button, a **"Forgot password?"** link, and a **`/reset-password`** page wired to the reset endpoint.
+
+## Observability
+
+- **Structured logging** (`api/_log.js`): one JSON object per request — method, pathname, status, duration, and a per-request id (also returned as the `X-Request-Id` header). The query string and request bodies are never logged, and secret-ish fields are redacted, so tokens/passwords can't leak into logs.
+- **Error tracking** (`api/_observability.js`): set `SENTRY_DSN` to report exceptions (handler errors, unhandled rejections, uncaught exceptions) to Sentry; it's a safe no-op when unset. `server.js` flushes Sentry on shutdown.
+
+Proven by `npm run test:obs` (log formatting, redaction, request-id shape, no-op capture).
+
 ## Deployment Targets
 
 - Vercel: static web deployment is ready through `vercel.json`.
@@ -104,6 +113,6 @@ Proven by `npm run test:auth` (hashing upgrade, DB lockout incl. restart-persist
 4. ~~Make repair real.~~ ✓ v1 generates patches and opens a real GitHub pull request, with manual items in the PR body (`api/_repair.js`). Next: rerun validation/tests on the patched branch and add CI-based merge-confidence before proposing.
 5. ~~Migrate the datastore to Postgres.~~ ✓ Relational schema with cascades + indexes; `pg` in prod, embedded PGlite locally (`api/_db.js`, `api/_repo.js`).
 6. ~~Auth hardening.~~ ✓ Email verification, password reset, raised scrypt cost (with transparent upgrade), and DB-backed login lockout. Pluggable email via Resend (`api/_email.js`).
-7. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
-8. Add error tracking (Sentry) + structured request logging; wire the frontend verify/reset pages.
+7. ~~Observability + frontend auth pages.~~ ✓ Structured JSON logging with request ids, Sentry error tracking (`api/_log.js`, `api/_observability.js`), and the verify-banner / forgot-password / reset-password UI.
+8. Add async scan/repair job queues (scans/repairs are currently synchronous per request).
 9. Add mobile packaging with Capacitor for iOS and Android.
