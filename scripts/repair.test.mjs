@@ -6,7 +6,7 @@
 import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { planRepairs, applyPlan } from "../api/_repair.js";
+import { planRepairs, applyPlan, classifyBump, confidenceScore } from "../api/_repair.js";
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -86,6 +86,18 @@ try {
   console.log("\nNo auto-fixable findings → no empty work");
   const onlyManual = planRepairs([findings[5]]);
   ok("plan with only secrets has zero patches", onlyManual.patches.length === 0);
+
+  console.log("\nMerge confidence (semver risk signal)");
+  ok("patch bump classified patch", classifyBump("4.17.15", "4.17.21") === "patch");
+  ok("minor bump classified minor", classifyBump("1.2.0", "1.5.0") === "minor");
+  ok("major bump classified major", classifyBump("1.2.0", "2.0.0") === "major");
+  ok("non-semver classified unknown", classifyBump("latest", "x") === "unknown");
+  const conf = plan.confidence;
+  ok("plan exposes per-bump confidence", Array.isArray(conf) && conf.length === 2);
+  ok("lodash bump scored patch", conf.find((c) => c.name === "lodash")?.level === "patch", JSON.stringify(conf));
+  ok("minimist override scored patch", conf.find((c) => c.name === "minimist")?.level === "patch");
+  ok("all-patch plan scores 100", confidenceScore(conf) === 100, String(confidenceScore(conf)));
+  ok("a major bump lowers the score", confidenceScore([{ level: "major" }]) === 40);
 } finally {
   await rm(dir, { recursive: true, force: true });
 }

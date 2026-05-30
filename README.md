@@ -56,7 +56,9 @@ npm run dev
 - **Committed `.env`** — added to `.gitignore` and removed from the tree.
 - **Missing CI** — a baseline GitHub Actions workflow is added.
 
-Left as **manual action items** (never auto-edited): secrets in code, committed keys, `.npmrc` tokens, missing lockfile — because auto-editing these risks breakage or mishandling credentials. Patch planning/application is proven by `npm run test:repair`.
+Left as **manual action items** (never auto-edited): secrets in code, committed keys, `.npmrc` tokens, missing lockfile — because auto-editing these risks breakage or mishandling credentials.
+
+Every dependency bump carries a **merge-confidence** signal classified by semver delta (🟢 patch / 🟡 minor / 🔴 major), surfaced in the PR body and as a 0–100 `confidenceScore` in the API response. Validation itself is delegated to the user's CI (the PR triggers it) — running the repo's code on Codecanic's servers would be unsafe. Patch planning/application + confidence scoring are proven by `npm run test:repair`.
 
 ### Scan engine (v1)
 

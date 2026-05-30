@@ -112,6 +112,8 @@ export default async function handler(req, res) {
       baseBranch: result.baseBranch,
       applied: result.applied,
       manual: result.manual,
+      confidence: result.confidence,
+      confidenceScore: result.confidenceScore,
       createdAt: new Date().toISOString()
     });
   } catch (error) {
