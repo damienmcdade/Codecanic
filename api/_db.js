@@ -111,7 +111,10 @@ let readyPromise = null;
 
 async function buildPgBackend(connectionString) {
   const pg = (await import("pg")).default;
-  const ssl = /sslmode=disable|localhost|127\.0\.0\.1/.test(connectionString) ? false : { rejectUnauthorized: false };
+  // No TLS on local or Railway private-network connections (railway.internal);
+  // TLS (relaxed cert check) for everything else (managed public endpoints).
+  const noSsl = /sslmode=disable|localhost|127\.0\.0\.1|\.railway\.internal/.test(connectionString);
+  const ssl = noSsl ? false : { rejectUnauthorized: false };
   const pool = new pg.Pool({ connectionString, ssl, max: Number(process.env.CODECANIC_PG_POOL || 10) });
   return {
     kind: "postgres",
