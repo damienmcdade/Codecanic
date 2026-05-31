@@ -1,0 +1,5 @@
+# Production install only — devDependencies (puppeteer for browser tests,
+# capacitor for mobile shells) are not needed to build or run the server, and
+# puppeteer's Chromium download otherwise breaks the Railway build.
+[phases.install]
+cmds = ["npm ci --omit=dev"]
