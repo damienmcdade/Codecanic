@@ -30,7 +30,7 @@
   "author": "Codecanic",
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "devDependencies": {
     "@capacitor/android": "^8.3.4",
