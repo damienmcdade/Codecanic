@@ -796,6 +796,8 @@ export async function scanDirectory(dir, { scanDepth = "full" } = {}) {
     (b.confidence - a.confidence)
   );
   findings = findings.slice(0, MAX_FINDINGS);
+  // Stable fingerprint (line-number stripped) so suppressions survive line drift.
+  for (const f of findings) f.fingerprint = f.id.replace(/:\d+$/, "");
 
   return {
     findings,

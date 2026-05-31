@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import * as repo from "./_repo.js";
 import { decryptSecret } from "./_crypto.js";
-import { scanRepository, validateGitUrl } from "./_scanner.js";
+import { scanRepository, validateGitUrl, summarizeFindings } from "./_scanner.js";
 import { runRepair } from "./_repair.js";
 import { planFor } from "./_lib.js";
 
@@ -28,6 +28,13 @@ async function executeScan(payload) {
   const plan = planFor(payload.tier || payload.organizationPlan || "Free");
   const token = await tokenForHost(meta.host, payload.organizationId);
   const result = await scanRepository({ sourceUrl: payload.sourceUrl, token, scanDepth: payload.scanDepth || "full" });
+
+  // Noise control: hide findings the org has suppressed; report how many.
+  const suppressed = await repo.suppressedFingerprints(payload.organizationId);
+  const visible = result.findings.filter((f) => !suppressed.has(f.fingerprint));
+  const suppressedCount = result.findings.length - visible.length;
+  result.findings = visible;
+  result.summary = { ...summarizeFindings(visible), suppressed: suppressedCount };
 
   const report = {
     id: randomUUID(),

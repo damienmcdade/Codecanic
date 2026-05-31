@@ -279,6 +279,29 @@ export async function deleteUserSessions(userId) {
   await q("DELETE FROM sessions WHERE user_id=$1", [userId]);
 }
 
+// --- suppressions (noise control) ------------------------------------------
+export async function addSuppression({ organizationId, fingerprint, reason, createdBy }) {
+  await q(
+    `INSERT INTO suppressions (id,organization_id,fingerprint,reason,created_by) VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (organization_id, fingerprint) DO UPDATE SET reason=EXCLUDED.reason`,
+    [randomUUID(), organizationId, fingerprint, reason || null, createdBy || null]
+  );
+}
+
+export async function removeSuppression(organizationId, fingerprint) {
+  await q("DELETE FROM suppressions WHERE organization_id=$1 AND fingerprint=$2", [organizationId, fingerprint]);
+}
+
+export async function suppressedFingerprints(organizationId) {
+  const rows = await q("SELECT fingerprint FROM suppressions WHERE organization_id=$1", [organizationId]);
+  return new Set(rows.map((r) => r.fingerprint));
+}
+
+export async function listSuppressions(organizationId) {
+  const rows = await q("SELECT fingerprint, reason, created_at FROM suppressions WHERE organization_id=$1 ORDER BY created_at DESC", [organizationId]);
+  return rows.map((r) => ({ fingerprint: r.fingerprint, reason: r.reason, createdAt: iso(r.created_at) }));
+}
+
 // --- background job queue --------------------------------------------------
 const mapJob = (r) => r && {
   id: r.id, type: r.type, status: r.status, organizationId: r.organization_id, userId: r.user_id,

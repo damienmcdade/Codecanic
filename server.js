@@ -11,6 +11,7 @@ import orgs from "./api/orgs.js";
 import repair from "./api/repair.js";
 import scan from "./api/scan.js";
 import jobs from "./api/jobs.js";
+import suppressions from "./api/suppressions.js";
 import { logger, newRequestId } from "./api/_log.js";
 import { initObservability, captureException, flushObservability } from "./api/_observability.js";
 import { startWorker, stopWorker } from "./api/_worker.js";
@@ -24,7 +25,8 @@ const exactRoutes = new Map([
   ["/api/jobs", jobs],
   ["/api/orgs", orgs],
   ["/api/repair", repair],
-  ["/api/scan", scan]
+  ["/api/scan", scan],
+  ["/api/suppressions", suppressions]
 ]);
 
 const prefixRoutes = [

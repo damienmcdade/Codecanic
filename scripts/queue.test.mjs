@@ -71,6 +71,22 @@ try {
   ok("worker processed the remaining jobs", processed >= 2, `processed=${processed}`);
   ok("unknown-type job ends failed (not stuck running)", (await repo.getJob(badType.id, org.id)).status === "failed");
   ok("no jobs left queued/running after drain", (await repo.recentJobs(org.id)).every((j) => j.status === "succeeded" || j.status === "failed"));
+
+  console.log("\nSuppressions (noise control)");
+  await repo.addSuppression({ organizationId: org.id, fingerprint: "sast:js-eval:app.js", reason: "false positive", createdBy: owner.id });
+  await repo.addSuppression({ organizationId: org.id, fingerprint: "hygiene:no-ci", createdBy: owner.id });
+  let supp = await repo.suppressedFingerprints(org.id);
+  ok("suppressed fingerprints returned as a set", supp.has("sast:js-eval:app.js") && supp.has("hygiene:no-ci"));
+  ok("suppression list carries the reason", (await repo.listSuppressions(org.id)).some((s) => s.reason === "false positive"));
+  ok("suppressions are org-scoped", (await repo.suppressedFingerprints(otherOrg.id)).size === 0);
+  ok("re-suppressing is idempotent (unique)", await repo.addSuppression({ organizationId: org.id, fingerprint: "hygiene:no-ci", createdBy: owner.id }).then(() => true).catch(() => false));
+  await repo.removeSuppression(org.id, "hygiene:no-ci");
+  supp = await repo.suppressedFingerprints(org.id);
+  ok("removeSuppression un-hides the finding", !supp.has("hygiene:no-ci") && supp.has("sast:js-eval:app.js"));
+  // The scan executor hides suppressed findings: simulate its filter.
+  const findings = [{ fingerprint: "sast:js-eval:app.js" }, { fingerprint: "dep:x" }];
+  const visible = findings.filter((f) => !supp.has(f.fingerprint));
+  ok("executor filter hides suppressed, keeps the rest", visible.length === 1 && visible[0].fingerprint === "dep:x");
 } finally {
   await closeDb();
   await rm(dir, { recursive: true, force: true });
