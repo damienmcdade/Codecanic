@@ -8,8 +8,9 @@
 // its own bound q. Schema is created lazily on first use (idempotent).
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 
-const SCHEMA = `
+export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY,
   email text UNIQUE NOT NULL,
@@ -161,8 +162,69 @@ async function init() {
   const url = process.env.DATABASE_URL;
   backend = url ? await buildPgBackend(url) : await buildPgliteBackend();
   await backend.exec(SCHEMA);
+  // When moving to managed Postgres, copy the volume's PGlite (current source of
+  // truth) first; fall back to the legacy JSON file only if still empty.
+  if (url) await migratePgliteToPostgres(backend);
   await migrateLegacyJson(backend);
   return backend;
+}
+
+const COPY_TABLES = ["users", "organizations", "memberships", "sessions", "connector_creds", "reports", "auth_tokens", "login_attempts", "jobs"];
+const JSONB_COLS = { reports: ["summary", "findings"], jobs: ["payload", "result"] };
+
+// Copy every table from a source query fn to a destination query fn. Idempotent
+// (ON CONFLICT DO NOTHING). Exported for tests; used by the PGlite→Postgres move.
+export async function copyAllTables(srcQuery, dstQuery) {
+  const counts = {};
+  for (const table of COPY_TABLES) {
+    let rows;
+    try {
+      rows = await srcQuery(`SELECT * FROM ${table}`);
+    } catch {
+      continue; // table absent in the source — skip
+    }
+    const jsonb = new Set(JSONB_COLS[table] || []);
+    for (const row of rows) {
+      const cols = Object.keys(row);
+      const placeholders = cols.map((c, i) => (jsonb.has(c) ? `$${i + 1}::jsonb` : `$${i + 1}`)).join(",");
+      const vals = cols.map((c) => {
+        const v = row[c];
+        if (v instanceof Date) return v.toISOString();
+        if (jsonb.has(c)) return v == null ? null : JSON.stringify(v);
+        return v;
+      });
+      await dstQuery(`INSERT INTO ${table} (${cols.join(",")}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`, vals);
+    }
+    counts[table] = rows.length;
+  }
+  return counts;
+}
+
+// One-time, idempotent, NON-destructive copy of the volume's embedded PGlite
+// database into managed Postgres. Runs only when Postgres is empty and a local
+// PGlite database exists. The PGlite files are left in place, so unsetting
+// DATABASE_URL cleanly reverts to the previous data.
+async function migratePgliteToPostgres(pgBackend) {
+  try {
+    const n = (await pgBackend.q("SELECT count(*)::int AS n FROM users"))[0]?.n ?? 0;
+    if (n > 0) return;
+    const pglitePath = join(process.env.CODECANIC_DATA_DIR || ".data", "pgdata");
+    if (!existsSync(pglitePath)) return;
+    const { PGlite } = await import("@electric-sql/pglite");
+    const src = new PGlite(pglitePath);
+    await src.waitReady;
+    try {
+      const counts = await copyAllTables(
+        async (sql, params) => (await src.query(sql, params)).rows,
+        (sql, params) => pgBackend.q(sql, params)
+      );
+      process.stdout.write(JSON.stringify({ level: "info", msg: "migrate.pglite_to_pg", ...counts }) + "\n");
+    } finally {
+      await src.close();
+    }
+  } catch (err) {
+    process.stderr.write(JSON.stringify({ level: "error", msg: "migrate.pglite_to_pg_failed", err: String(err?.message || err) }) + "\n");
+  }
 }
 
 // One-time, idempotent import of the pre-Postgres JSON-file store. Runs only
