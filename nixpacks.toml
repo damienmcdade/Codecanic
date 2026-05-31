@@ -1,5 +1,13 @@
-# Production install only — devDependencies (puppeteer for browser tests,
-# capacitor for mobile shells) are not needed to build or run the server, and
-# puppeteer's Chromium download otherwise breaks the Railway build.
+# Production build only. puppeteer (browser-test devDep) makes nixpacks inject a
+# heavy chromium apt install + download Chromium on npm ci, which breaks the
+# Railway build. Pin a minimal Node setup (no chromium apt) and install only
+# runtime deps — devDependencies aren't needed to build or run the server.
+[phases.setup]
+nixPkgs = ["nodejs_24", "npm-9_x"]
+aptPkgs = []
+
 [phases.install]
 cmds = ["npm ci --omit=dev"]
+
+[phases.build]
+cmds = ["npm run build"]
