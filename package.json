@@ -17,7 +17,8 @@
     "test:obs": "node scripts/obs.test.mjs",
     "test:migrate": "node scripts/migrate.test.mjs",
     "test:queue": "node scripts/queue.test.mjs",
-    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/migrate.test.mjs && node scripts/auth.test.mjs && node scripts/obs.test.mjs && node scripts/queue.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs"
+    "test:browser": "node scripts/browser.test.mjs",
+    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/migrate.test.mjs && node scripts/auth.test.mjs && node scripts/obs.test.mjs && node scripts/queue.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs && node scripts/browser.test.mjs"
   },
   "keywords": [
     "code-scanning",
@@ -33,7 +34,8 @@
   "devDependencies": {
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
-    "@capacitor/core": "^8.3.4"
+    "@capacitor/core": "^8.3.4",
+    "puppeteer": "^25.1.0"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.6",
