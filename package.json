@@ -18,8 +18,9 @@
     "test:migrate": "node scripts/migrate.test.mjs",
     "test:queue": "node scripts/queue.test.mjs",
     "test:pgmigrate": "node scripts/pgmigrate.test.mjs",
+    "test:github": "node scripts/github.test.mjs",
     "test:browser": "npm i -D puppeteer --no-save && node scripts/browser.test.mjs",
-    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/migrate.test.mjs && node scripts/pgmigrate.test.mjs && node scripts/auth.test.mjs && node scripts/obs.test.mjs && node scripts/queue.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs"
+    "test": "node scripts/check.mjs && node scripts/db.test.mjs && node scripts/migrate.test.mjs && node scripts/pgmigrate.test.mjs && node scripts/auth.test.mjs && node scripts/obs.test.mjs && node scripts/queue.test.mjs && node scripts/github.test.mjs && node scripts/scanner.test.mjs && node scripts/repair.test.mjs && node scripts/e2e.mjs"
   },
   "keywords": [
     "code-scanning",

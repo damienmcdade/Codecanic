@@ -302,6 +302,24 @@ export async function listSuppressions(organizationId) {
   return rows.map((r) => ({ fingerprint: r.fingerprint, reason: r.reason, createdAt: iso(r.created_at) }));
 }
 
+// --- GitHub App installations ----------------------------------------------
+export async function setGithubInstallation(organizationId, installationId) {
+  await q(
+    `INSERT INTO github_installations (organization_id, installation_id) VALUES ($1,$2)
+     ON CONFLICT (organization_id) DO UPDATE SET installation_id=EXCLUDED.installation_id, created_at=now()`,
+    [organizationId, String(installationId)]
+  );
+}
+
+export async function getGithubInstallation(organizationId) {
+  const rows = await q("SELECT installation_id FROM github_installations WHERE organization_id=$1", [organizationId]);
+  return rows[0]?.installation_id || null;
+}
+
+export async function removeGithubInstallation(organizationId) {
+  await q("DELETE FROM github_installations WHERE organization_id=$1", [organizationId]);
+}
+
 // --- background job queue --------------------------------------------------
 const mapJob = (r) => r && {
   id: r.id, type: r.type, status: r.status, organizationId: r.organization_id, userId: r.user_id,

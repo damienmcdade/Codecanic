@@ -1,23 +1,8 @@
 import { json, readBody, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
-import { decryptSecret } from "./_crypto.js";
 import { validateGitUrl } from "./_scanner.js";
+import { hasConnection } from "./_github.js";
 import { JOB_TYPES } from "./_jobs.js";
-
-const HOST_PROVIDER = {
-  "github.com": "GitHub",
-  "www.github.com": "GitHub",
-  "gitlab.com": "GitLab",
-  "bitbucket.org": "Bitbucket"
-};
-
-async function hasToken(host, organizationId) {
-  const provider = HOST_PROVIDER[host];
-  if (!provider) return false;
-  const cred = await repo.findConnectorCred(provider, organizationId);
-  if (!cred?.accessToken) return false;
-  try { decryptSecret(cred.accessToken); return true; } catch { return false; }
-}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -73,7 +58,7 @@ export default async function handler(req, res) {
       json(res, 422, { error: "Automated pull requests are supported for GitHub repositories in v1." });
       return;
     }
-    if (!(await hasToken(meta.host, context.organization.id))) {
+    if (!(await hasConnection(meta.host, context.organization.id))) {
       json(res, 422, { error: "Connect GitHub with write access for this organization to open repair pull requests." });
       return;
     }
