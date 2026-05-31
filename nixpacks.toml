@@ -7,7 +7,9 @@ nixPkgs = ["nodejs_24", "npm-9_x"]
 aptPkgs = []
 
 [phases.install]
-cmds = ["npm ci --omit=dev"]
+# Use a fresh cache dir — the shared npm cache mount was poisoned by earlier
+# puppeteer/chromium build attempts, breaking npm ci.
+cmds = ["npm ci --omit=dev --no-audit --cache /tmp/.npmcache"]
 
 [phases.build]
 cmds = ["npm run build"]
