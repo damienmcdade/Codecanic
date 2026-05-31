@@ -44,6 +44,7 @@ export function planRepairs(findings = []) {
   const tsconfigs = new Set();
   const envFiles = new Set();
   let addCi = false;
+  const codeReplaces = [];
   const manual = [];
 
   for (const f of findings) {
@@ -58,6 +59,7 @@ export function planRepairs(findings = []) {
       case "tsconfig-strict": tsconfigs.add(r.file); break;
       case "gitignore-env": envFiles.add(r.file); break;
       case "add-ci": addCi = true; break;
+      case "code-replace": codeReplaces.push({ file: r.file, line: r.line, search: r.search, replace: r.replace, title: f.title }); break;
       default: manual.push({ id: f.id, title: f.title, target: f.target, fix: f.fix, reason: "no automated remediation" });
     }
   }
@@ -69,6 +71,7 @@ export function planRepairs(findings = []) {
   for (const file of tsconfigs) patches.push({ kind: "tsconfig-strict", file });
   for (const file of envFiles) patches.push({ kind: "gitignore-env", file });
   if (addCi) patches.push({ kind: "add-ci" });
+  for (const cr of codeReplaces) patches.push({ kind: "code-replace", ...cr });
 
   // Merge-confidence: classify each dependency bump by semver delta so the PR
   // carries a risk signal (the user's CI, triggered by the PR, does the real
@@ -174,6 +177,21 @@ export async function applyPlan(dir, plan) {
         changed.add(".github/workflows/codecanic-ci.yml");
         summary.push("add CI workflow");
       }
+    } else if (patch.kind === "code-replace") {
+      // Apply a safe, line-local SAST fix (e.g. md5→sha256, yaml.load→safe_load).
+      const p = join(dir, patch.file);
+      if (!(await exists(p))) continue;
+      const raw = await readFile(p, "utf8");
+      const lines = raw.split("\n");
+      const idx = patch.line - 1;
+      if (idx < 0 || idx >= lines.length) continue;
+      let re;
+      try { re = new RegExp(patch.search); } catch { continue; }
+      if (!re.test(lines[idx])) continue; // line drifted — skip rather than corrupt
+      lines[idx] = lines[idx].replace(re, patch.replace);
+      await writeFile(p, lines.join("\n"));
+      changed.add(patch.file);
+      summary.push(`fix ${patch.file}:${patch.line} (${patch.title})`);
     }
   }
 

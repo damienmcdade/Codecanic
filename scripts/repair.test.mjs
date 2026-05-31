@@ -28,6 +28,8 @@ const findings = [
     remediation: { kind: "gitignore-env", file: ".env" } },
   { id: "hygiene:no-ci", category: "hygiene", severity: "warning", title: "No CI pipeline detected", target: "(repository root)",
     remediation: { kind: "add-ci" } },
+  { id: "sast:js-weak-hash:db.js:2", category: "sast", severity: "warning", title: "Weak hash algorithm (MD5/SHA-1)", target: "db.js:2",
+    remediation: { kind: "code-replace", file: "db.js", line: 2, search: "(createHash\\s*\\(\\s*['\"])(md5|sha1)(['\"])", replace: "$1sha256$3" } },
   // Manual (no remediation) — must NOT be auto-patched:
   { id: "secret:aws-access-key:config.js:2", category: "secret", severity: "critical", title: "Exposed secret: AWS Access Key ID", target: "config.js:2", fix: "Rotate." },
   { id: "hygiene:key-file", category: "hygiene", severity: "critical", title: "Private key committed", target: "server.pem", fix: "Remove + rotate." }
@@ -56,6 +58,7 @@ try {
   await writeFile(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: false } }, null, 2));
   await writeFile(join(dir, ".env"), "SECRET=live-value\n");
   await writeFile(join(dir, ".gitignore"), "node_modules/\n");
+  await writeFile(join(dir, "db.js"), "import crypto from 'crypto';\nexport const h = crypto.createHash('md5');\n");
 
   console.log("\nApplying patches to a real tree");
   const applied = await applyPlan(dir, plan);
@@ -74,6 +77,10 @@ try {
 
   ok("CI workflow created", await exists(join(dir, ".github", "workflows", "codecanic-ci.yml")));
 
+  const db = await readFile(join(dir, "db.js"), "utf8");
+  ok("SAST code-replace: md5 → sha256 applied", db.includes("createHash('sha256')") && !db.includes("'md5'"), db.split("\n")[1]);
+  ok("plans a code-replace patch", kinds.includes("code-replace"));
+
   ok("applied.changed lists package.json", applied.changed.includes("package.json"));
   ok("applied.removed lists .env", applied.removed.includes(".env"));
   ok("applied.summary is human-readable", applied.summary.length > 0 && applied.summary.every((s) => typeof s === "string"));
@@ -84,7 +91,7 @@ try {
   ok(".gitignore not duplicated on re-run", gi2.split("\n").filter((l) => l.trim() === ".env").length === 1);
 
   console.log("\nNo auto-fixable findings → no empty work");
-  const onlyManual = planRepairs([findings[5]]);
+  const onlyManual = planRepairs([findings.find((f) => f.id.startsWith("secret:"))]);
   ok("plan with only secrets has zero patches", onlyManual.patches.length === 0);
 
   console.log("\nMerge confidence (semver risk signal)");

@@ -621,6 +621,145 @@ function hyg(id, title, severity, target, detail, fix, remediation = null) {
 }
 
 // ---------------------------------------------------------------------------
+// Analyzer 4: lightweight SAST (Semgrep-style real-vuln patterns)
+// ---------------------------------------------------------------------------
+// Each rule matches a genuine vulnerability class. `autofix` (when present)
+// makes a safe, line-local replacement the repair engine can open as a PR.
+const SAST_RULES = [
+  // JavaScript / TypeScript
+  { id: "js-eval", langs: ["js"], re: /\beval\s*\(/, sev: "critical", title: "Use of eval() (code injection)", fix: "Avoid eval(); parse data explicitly or use a safe alternative." },
+  { id: "js-new-function", langs: ["js"], re: /\bnew\s+Function\s*\(/, sev: "critical", title: "Dynamic new Function() (code injection)", fix: "Avoid constructing functions from strings." },
+  { id: "js-child-exec", langs: ["js"], re: /\bexec(?:Sync)?\s*\(\s*[`'"][^`'")]*\$\{|\bexec(?:Sync)?\s*\([^)]*\+/, sev: "critical", title: "Command built from interpolation in exec() (command injection)", fix: "Use execFile/spawn with an args array; never interpolate user input into a shell command." },
+  { id: "js-sql-concat", langs: ["js"], re: /\.(query|execute)\s*\(\s*[`'"][^`'"]*\$\{|\.(query|execute)\s*\([^)]*\+\s*\w/, sev: "critical", title: "SQL built by string concatenation (SQL injection)", fix: "Use parameterized queries / prepared statements." },
+  { id: "js-weak-hash", langs: ["js"], re: /createHash\s*\(\s*['"](md5|sha1)['"]/, sev: "warning", title: "Weak hash algorithm (MD5/SHA-1)", fix: "Use SHA-256 or stronger.", autofix: { search: /(createHash\s*\(\s*['"])(md5|sha1)(['"])/, replace: "$1sha256$3" } },
+  { id: "js-dangerous-html", langs: ["js"], re: /dangerouslySetInnerHTML/, sev: "warning", title: "dangerouslySetInnerHTML (XSS risk)", fix: "Sanitize HTML (e.g. DOMPurify) before injecting." },
+  // Python
+  { id: "py-eval-exec", langs: ["py"], re: /\b(eval|exec)\s*\(/, sev: "critical", title: "Use of eval()/exec() (code injection)", fix: "Avoid eval/exec on untrusted input." },
+  { id: "py-yaml-load", langs: ["py"], re: /yaml\.load\s*\((?![^)]*Loader\s*=\s*yaml\.SafeLoader)/, sev: "critical", title: "yaml.load() without SafeLoader (arbitrary code execution)", fix: "Use yaml.safe_load().", autofix: { search: /yaml\.load\s*\(/, replace: "yaml.safe_load(" } },
+  { id: "py-pickle", langs: ["py"], re: /pickle\.loads?\s*\(/, sev: "critical", title: "pickle deserialization (RCE risk)", fix: "Avoid pickle on untrusted data; use JSON." },
+  { id: "py-subprocess-shell", langs: ["py"], re: /subprocess\.[A-Za-z_]+\([^)]*shell\s*=\s*True/, sev: "critical", title: "subprocess with shell=True (command injection)", fix: "Pass an args list and shell=False." },
+  { id: "py-os-system", langs: ["py"], re: /\bos\.system\s*\(/, sev: "warning", title: "os.system() (command injection risk)", fix: "Use subprocess with an args list." },
+  { id: "py-weak-hash", langs: ["py"], re: /hashlib\.(md5|sha1)\s*\(/, sev: "warning", title: "Weak hash algorithm (MD5/SHA-1)", fix: "Use hashlib.sha256.", autofix: { search: /(hashlib\.)(md5|sha1)(\s*\()/, replace: "$1sha256$3" } },
+  { id: "py-requests-noverify", langs: ["py"], re: /verify\s*=\s*False/, sev: "warning", title: "TLS certificate verification disabled (verify=False)", fix: "Remove verify=False; verify certificates.", autofix: { search: /verify\s*=\s*False/, replace: "verify=True" } }
+];
+
+const SAST_LANG = { ".js": "js", ".jsx": "js", ".ts": "js", ".tsx": "js", ".mjs": "js", ".cjs": "js", ".py": "py" };
+
+async function analyzeStaticCode(root, files) {
+  const findings = [];
+  let scanned = 0;
+  for (const file of files) {
+    if (findings.length >= MAX_FINDINGS) break;
+    const lang = SAST_LANG[extname(file).toLowerCase()];
+    if (!lang) continue;
+    const base = basename(file).toLowerCase();
+    // Skip test/spec/fixture files — high false-positive, low value.
+    if (/\.(test|spec)\.|fixture|__tests__|\.min\./.test(base)) continue;
+    const text = await readText(file);
+    if (text == null) continue;
+    scanned++;
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.length > 2000) continue;
+      const trimmed = line.trim();
+      if (trimmed.startsWith("//") || trimmed.startsWith("#") || trimmed.startsWith("*")) continue; // skip comments
+      for (const rule of SAST_RULES) {
+        if (!rule.langs.includes(lang)) continue;
+        if (!rule.re.test(line)) continue;
+        const rel = `${relative(root, file)}:${i + 1}`;
+        findings.push({
+          id: `sast:${rule.id}:${rel}`,
+          title: rule.title,
+          type: "security",
+          category: "sast",
+          severity: rule.sev,
+          severityLabel: rule.sev === "critical" ? "high" : "moderate",
+          confidence: rule.autofix ? 85 : 75,
+          target: rel,
+          detail: `${rule.title}. Static pattern match — review in context.`,
+          fix: rule.fix,
+          patchPreview: rule.fix,
+          remediation: rule.autofix ? { kind: "code-replace", file: relative(root, file).replace(/\\/g, "/"), line: i + 1, search: rule.autofix.search.source, replace: rule.autofix.replace } : null
+        });
+        break; // one finding per line
+      }
+    }
+  }
+  return { findings, scanned: { files: scanned } };
+}
+
+// ---------------------------------------------------------------------------
+// Analyzer 5: supply-chain / malware signals (Socket-style, from manifests)
+// ---------------------------------------------------------------------------
+const POPULAR_NPM = [
+  "lodash", "react", "react-dom", "express", "axios", "chalk", "commander", "debug",
+  "moment", "request", "vue", "webpack", "babel", "typescript", "jest", "eslint",
+  "next", "dotenv", "uuid", "classnames", "prop-types", "redux", "rxjs", "tslib",
+  "node-fetch", "yargs", "bluebird", "underscore", "async", "colors", "minimist"
+];
+
+// Damerau-Levenshtein (optimal string alignment) — counts an adjacent
+// transposition as distance 1, since typosquats are commonly char swaps
+// (e.g. "lodahs" vs "lodash") as well as substitutions/insertions/deletions.
+function editDistance(a, b) {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 1) return 2; // we only care about distance <= 1
+  const d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1); // transposition
+      }
+    }
+  }
+  return d[m][n];
+}
+
+async function analyzeSupplyChain(root, files) {
+  const findings = [];
+  for (const file of files) {
+    if (basename(file).toLowerCase() !== "package.json") continue;
+    const text = await readText(file);
+    if (!text) continue;
+    let json;
+    try { json = JSON.parse(text); } catch { continue; }
+    const rel = relative(root, file).replace(/\\/g, "/");
+    const deps = { ...(json.dependencies || {}), ...(json.devDependencies || {}) };
+    for (const [name, spec] of Object.entries(deps)) {
+      // Typosquatting: name is 1 edit away from a popular package (but not equal).
+      for (const popular of POPULAR_NPM) {
+        if (name !== popular && Math.abs(name.length - popular.length) <= 1 && editDistance(name, popular) === 1) {
+          findings.push(sc(`supplychain:typosquat:${name}`, `Possible typosquat: "${name}" resembles "${popular}"`, "critical", `${rel} · ${name}`,
+            `The dependency "${name}" is one character from the popular package "${popular}" — a common malware/typosquat vector.`,
+            `Verify "${name}" is intended; if you meant "${popular}", correct it.`));
+          break;
+        }
+      }
+      // Non-registry (mutable) sources: git/http/file specifiers.
+      if (typeof spec === "string" && /^(git\+|git:|https?:|http:|file:|github:)/.test(spec)) {
+        findings.push(sc(`supplychain:nonregistry:${name}`, `Non-registry dependency source: "${name}"`, "warning", `${rel} · ${name}`,
+          `"${name}" resolves from a mutable source (${spec.slice(0, 48)}) rather than a pinned registry version — a supply-chain risk.`,
+          "Pin to a published registry version with an integrity hash."));
+      }
+    }
+  }
+  return { findings };
+}
+
+function sc(id, title, severity, target, detail, fix) {
+  return {
+    id, title, type: "security", category: "supply-chain",
+    severity, severityLabel: severity === "critical" ? "high" : "moderate",
+    confidence: severity === "critical" ? 80 : 85, target, detail, fix, patchPreview: fix, remediation: null
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Summary + orchestration
 // ---------------------------------------------------------------------------
 export function summarizeFindings(findings) {
@@ -638,13 +777,15 @@ const SEVERITY_RANK = { critical: 0, warning: 1 };
 export async function scanDirectory(dir, { scanDepth = "full" } = {}) {
   const started = Date.now();
   const files = await walk(dir);
-  const [deps, secrets, hygiene] = await Promise.all([
+  const [deps, secrets, hygiene, sast, supply] = await Promise.all([
     analyzeDependencies(dir, files),
     analyzeSecrets(dir, files),
-    analyzeHygiene(dir, files)
+    analyzeHygiene(dir, files),
+    analyzeStaticCode(dir, files),
+    analyzeSupplyChain(dir, files)
   ]);
 
-  let findings = [...deps.findings, ...secrets.findings, ...hygiene.findings];
+  let findings = [...deps.findings, ...secrets.findings, ...hygiene.findings, ...sast.findings, ...supply.findings];
 
   if (scanDepth && scanDepth !== "full") {
     findings = findings.filter((f) => f.type === scanDepth || f.severity === scanDepth || f.category === scanDepth);
@@ -663,6 +804,7 @@ export async function scanDirectory(dir, { scanDepth = "full" } = {}) {
       filesWalked: files.length,
       dependencies: deps.scanned,
       secretsScannedFiles: secrets.scanned.files,
+      sastScannedFiles: sast.scanned.files,
       osv: deps.osv,
       durationMs: Date.now() - started
     }
