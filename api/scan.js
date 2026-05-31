@@ -1,4 +1,4 @@
-import { json, readBody, resolveOrgContext } from "./_lib.js";
+import { json, planFor, readBody, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { validateGitUrl } from "./_scanner.js";
 import { JOB_TYPES } from "./_jobs.js";
@@ -35,6 +35,19 @@ export default async function handler(req, res) {
     } catch (err) {
       json(res, 400, { error: err.message });
       return;
+    }
+
+    // Free-plan monthly scan limit (Pro is unlimited + ad-free).
+    const plan = planFor(context.organization.plan);
+    if (plan.monthlyScanLimit != null) {
+      const used = await repo.countScansThisMonth(context.organization.id);
+      if (used >= plan.monthlyScanLimit) {
+        json(res, 402, {
+          error: `Monthly scan limit reached (${plan.monthlyScanLimit}). Upgrade to Pro for unlimited scans.`,
+          code: "scan_limit", limit: plan.monthlyScanLimit, used
+        });
+        return;
+      }
     }
 
     // Enqueue the (slow) clone+scan work; the worker runs it and stores a report.

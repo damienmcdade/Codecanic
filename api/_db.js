@@ -93,8 +93,23 @@ CREATE TABLE IF NOT EXISTS jobs (
   started_at timestamptz,
   finished_at timestamptz
 );
+CREATE TABLE IF NOT EXISTS suppressions (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  fingerprint text NOT NULL,
+  reason text,
+  created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (organization_id, fingerprint)
+);
+CREATE TABLE IF NOT EXISTS github_installations (
+  organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+  installation_id text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE INDEX IF NOT EXISTS idx_jobs_queued ON jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_org ON jobs(organization_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_suppressions_org ON suppressions(organization_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships(organization_id);
@@ -172,7 +187,7 @@ async function init() {
   return backend;
 }
 
-const COPY_TABLES = ["users", "organizations", "memberships", "sessions", "connector_creds", "reports", "auth_tokens", "login_attempts", "jobs"];
+const COPY_TABLES = ["users", "organizations", "memberships", "sessions", "connector_creds", "reports", "auth_tokens", "login_attempts", "jobs", "suppressions", "github_installations"];
 const JSONB_COLS = { reports: ["summary", "findings"], jobs: ["payload", "result"] };
 
 // Copy every table from a source query fn to a destination query fn. Idempotent

@@ -3,6 +3,7 @@ import { getConnector, json, readBody } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { currentUserContext } from "./_auth.js";
 import { encryptSecret } from "./_crypto.js";
+import { githubAppConfigured } from "./_github.js";
 
 const manualProviders = new Set(["Railway", "Xcode"]);
 
@@ -370,6 +371,46 @@ async function status(req, res) {
   json(res, 200, { connections });
 }
 
+function orgFromRequest(req, context, url) {
+  const requested = req.headers["x-codecanic-org"] || url.searchParams.get("organization");
+  return requested
+    ? context.organizations.find((o) => o.slug === requested || o.id === requested)
+    : context.organizations[0];
+}
+
+// GitHub App (least-privilege, per-repo): return the install URL with signed state.
+async function githubAppStart(req, res) {
+  const context = await currentUserContext(req);
+  if (!context) { json(res, 401, { error: "Sign in required." }); return; }
+  if (!githubAppConfigured() || !process.env.GITHUB_APP_SLUG) {
+    json(res, 200, { configured: false, message: "GitHub App is not configured on this deployment; OAuth connect is available instead." });
+    return;
+  }
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const organization = orgFromRequest(req, context, url);
+  if (!organization) { json(res, 400, { error: "Select an organization first." }); return; }
+  const state = signState({ kind: "github-app", userId: context.user.id, organizationId: organization.id, expiresAt: Date.now() + 10 * 60_000 });
+  const installUrl = `https://github.com/apps/${encodeURIComponent(process.env.GITHUB_APP_SLUG)}/installations/new?state=${encodeURIComponent(state)}`;
+  json(res, 200, { configured: true, installUrl });
+}
+
+// GitHub redirects here (the App's Setup URL) after install with installation_id.
+async function githubAppCallback(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const installationId = url.searchParams.get("installation_id");
+  const payload = verifyState(url.searchParams.get("state"));
+  if (!payload || payload.kind !== "github-app" || !installationId) {
+    sendHtml(res, 400, renderHtml("GitHub App setup failed", "This link is invalid or expired. Start the connection again.", { provider: "GitHub", success: false, nonce: req.cspNonce }));
+    return;
+  }
+  if (!(await repo.membershipExists(payload.userId, payload.organizationId))) {
+    sendHtml(res, 403, renderHtml("Access denied", "You no longer have access to that organization.", { provider: "GitHub", success: false, nonce: req.cspNonce }));
+    return;
+  }
+  await repo.setGithubInstallation(payload.organizationId, installationId);
+  sendHtml(res, 200, renderHtml("GitHub App connected", "Codecanic can now access only the repositories you selected. Your code is never stored.", { provider: "GitHub", success: true, nonce: req.cspNonce }));
+}
+
 export default async function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const action = url.pathname.replace(/^\/api\/oauth\/?/, "");
@@ -379,6 +420,8 @@ export default async function handler(req, res) {
     if (action === "status" && req.method === "GET") return await status(req, res);
     if (action === "manual" && req.method === "POST") return await manual(req, res);
     if (action === "disconnect" && req.method === "POST") return await disconnect(req, res);
+    if (action === "github-app" && req.method === "GET") return await githubAppStart(req, res);
+    if (action === "github-app-callback" && req.method === "GET") return await githubAppCallback(req, res);
     json(res, 404, { error: "Unknown oauth action" });
   } catch (error) {
     json(res, 400, { error: error.message });

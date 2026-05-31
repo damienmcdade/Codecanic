@@ -50,6 +50,23 @@ try {
   }, null, 2));
   // a secret in an .example file that MUST be ignored (false-positive guard).
   await writeFile(join(dir, ".env.example"), "DB_PASSWORD=\"your-password-here\"\nAWS_KEY=AKIAEXAMPLEEXAMPLE12\n");
+  // SAST fixtures: real vulnerability patterns (some auto-fixable).
+  await writeFile(join(dir, "app.py"), [
+    "import yaml, hashlib",
+    "def load(s): return yaml.load(s)",          // critical, auto-fixable -> safe_load
+    "def digest(x): return hashlib.md5(x).hexdigest()", // weak hash, auto-fixable -> sha256
+  ].join("\n"));
+  await writeFile(join(dir, "db.js"), [
+    "import crypto from 'crypto';",
+    "export const h = crypto.createHash('md5');",  // weak hash, auto-fixable
+    "export function run(input){ return eval(input); }", // critical, manual
+  ].join("\n"));
+  // Supply-chain fixtures: a typosquat + a non-registry dependency (subdir so it
+  // doesn't clobber the SCA package.json above).
+  await mkdir(join(dir, "frontend"), { recursive: true });
+  await writeFile(join(dir, "frontend", "package.json"), JSON.stringify({
+    name: "fe", dependencies: { lodahs: "1.0.0", express: "git+https://github.com/x/express" }
+  }, null, 2));
 
   // --- run the engine ------------------------------------------------------
   const report = await scanDirectory(dir, { scanDepth: "full" });
@@ -67,6 +84,22 @@ try {
   ok("flags committed .env file", ids.some((id) => id === "hygiene:committed-env"));
   ok("flags tsconfig strict disabled", ids.some((id) => id === "hygiene:ts-strict"));
   ok("flags missing CI pipeline", ids.some((id) => id === "hygiene:no-ci"));
+
+  console.log("\nSAST (Semgrep-style real-vuln patterns)");
+  const sast = byCat("sast");
+  ok("detects yaml.load() RCE in app.py", ids.some((id) => id.startsWith("sast:py-yaml-load") && id.includes("app.py")));
+  ok("detects weak MD5 hash (py + js)", ids.some((id) => id.startsWith("sast:py-weak-hash")) && ids.some((id) => id.startsWith("sast:js-weak-hash")));
+  ok("detects eval() code injection", ids.some((id) => id.startsWith("sast:js-eval") || id.startsWith("sast:py-eval-exec")));
+  ok("SAST findings carry severity + file:line target", sast.length > 0 && sast.every((f) => f.severity && /:\d+$/.test(f.target)));
+  ok("auto-fixable SAST findings carry a code-replace remediation", sast.some((f) => f.remediation?.kind === "code-replace"));
+  ok("eval() is flagged but NOT auto-fixed (manual)", sast.find((f) => f.id.includes("js-eval"))?.remediation == null);
+
+  console.log("\nSupply-chain / malware signals");
+  const supply = byCat("supply-chain");
+  ok("flags possible typosquat (lodahs ~ lodash)", ids.some((id) => id === "supplychain:typosquat:lodahs"));
+  ok("typosquat is critical", supply.find((f) => f.id.includes("typosquat"))?.severity === "critical");
+  ok("flags non-registry (git) dependency source", ids.some((id) => id === "supplychain:nonregistry:express"));
+  ok("does NOT flag legitimate package names as typosquat", !ids.some((id) => id === "supplychain:typosquat:lodash"));
 
   console.log("\nDependency SCA (real OSV.dev lookup)");
   if (report.scanned.osv === "ok") {

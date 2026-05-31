@@ -66,8 +66,11 @@ Every dependency bump carries a **merge-confidence** signal classified by semver
 `api/_scanner.js` performs genuine analysis of the cloned tree:
 
 - **Dependency SCA** — parses `package-lock.json` / `yarn.lock` / `package.json` (npm) and `requirements.txt` (PyPI), then queries [OSV.dev](https://osv.dev) for known vulnerabilities (real CVEs, severity, references).
-- **Secret scanning** — gitleaks-style regex + entropy over text files (AWS keys, GitHub/GitLab tokens, Slack, Google, Stripe, private keys, JWTs, high-entropy assignments); matches are redacted in output and `.example`/`.sample` files are ignored.
-- **Repo hygiene** — committed `.env`/key files, `.npmrc` auth tokens, TypeScript `strict` disabled, missing lockfile, missing CI pipeline.
+- **SAST** — Semgrep-style real-vulnerability patterns for JS/TS + Python (eval/`new Function`, command injection via `exec()`, SQL string concat, weak hashes, `dangerouslySetInnerHTML`, `yaml.load` RCE, `pickle`, `subprocess(shell=True)`, `os.system`, TLS `verify=False`). Safe line-local fixes (md5→sha256, `yaml.load`→`safe_load`, `verify=False`→`True`) become auto-fix PRs; risky ones stay manual.
+- **Supply-chain / malware signals** — typosquat detection (Damerau-Levenshtein vs a popular-package list, catching transpositions) and non-registry (git/http/file) dependency sources.
+- **Secret scanning** — gitleaks-style regex + entropy over text files; matches are redacted and `.example`/`.sample` files ignored.
+- **Repo hygiene** — committed `.env`/key files, `.npmrc` tokens, TypeScript `strict` off, missing lockfile, missing CI.
+- **Noise control** — findings carry a stable fingerprint; orgs can suppress findings (`/api/suppressions`), hidden from future scans.
 
 Bounded for safety: https-only SSRF-allowlisted hosts, shallow `--depth 1` clone with a timeout, file/size/finding caps, and the temp checkout is always deleted. Proven by `npm run test:scanner`.
 
@@ -81,6 +84,11 @@ Codecanic uses **Postgres** via a small relational schema (`api/_db.js` + `api/_
 - **Local/dev/test:** with no `DATABASE_URL`, the app runs **embedded Postgres ([PGlite](https://pglite.dev), real Postgres in WASM)** persisted under `${CODECANIC_DATA_DIR}/pgdata` — the *same SQL* runs in both, so tests need no database server.
 
 Durability across restarts, unique constraints, and cascading integrity are proven by `npm run test:db`.
+
+## Access model & plans
+
+- **GitHub App (preferred):** when `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY` are set, orgs install a least-privilege GitHub App (per-repo, short-lived tokens) via `/api/oauth/github-app`; scans/repairs mint installation tokens. **Your code is never stored** — the temp clone is deleted after every scan. Falls back to OAuth when the App isn't configured.
+- **Plans:** Codecanic stays **free + ad-supported** (Google AdSense). **Pro** is an optional paid upgrade (ad-free, unlimited scans) via Stripe — Free is capped at 50 scans/month. `/api/billing` reports plan/usage; `/api/billing/checkout` starts the upgrade (reports "not configured" without Stripe keys); `/api/billing/webhook` (Stripe-signed) flips the org plan.
 
 ## Authentication
 

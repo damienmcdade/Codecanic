@@ -11,6 +11,8 @@ import orgs from "./api/orgs.js";
 import repair from "./api/repair.js";
 import scan from "./api/scan.js";
 import jobs from "./api/jobs.js";
+import suppressions from "./api/suppressions.js";
+import billing from "./api/billing.js";
 import { logger, newRequestId } from "./api/_log.js";
 import { initObservability, captureException, flushObservability } from "./api/_observability.js";
 import { startWorker, stopWorker } from "./api/_worker.js";
@@ -24,13 +26,16 @@ const exactRoutes = new Map([
   ["/api/jobs", jobs],
   ["/api/orgs", orgs],
   ["/api/repair", repair],
-  ["/api/scan", scan]
+  ["/api/scan", scan],
+  ["/api/suppressions", suppressions],
+  ["/api/billing", billing]
 ]);
 
 const prefixRoutes = [
   { prefix: "/api/auth/", handler: auth },
   { prefix: "/api/oauth/", handler: oauth },
-  { prefix: "/api/jobs/", handler: jobs }
+  { prefix: "/api/jobs/", handler: jobs },
+  { prefix: "/api/billing/", handler: billing }
 ];
 
 const contentTypes = {
@@ -177,6 +182,7 @@ const server = createServer(async (req, res) => {
     stateChangingMethods.has(req.method) &&
     url.pathname.startsWith("/api/") &&
     !url.pathname.startsWith("/api/oauth/callback") &&
+    !url.pathname.startsWith("/api/billing/webhook") &&
     !originAllowed(req)
   ) {
     send(res, 403, JSON.stringify({ error: "Cross-origin request rejected." }), "application/json; charset=utf-8");

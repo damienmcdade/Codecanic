@@ -274,6 +274,29 @@ function renderAccount() {
   }
   const banner = document.querySelector("#verify-banner");
   if (banner) banner.hidden = !(session.user && session.user.emailVerified === false);
+  applyPlanUI();
+}
+
+// Pro orgs are ad-free; Free orgs see ads + an upgrade prompt.
+function applyPlanUI() {
+  const org = activeOrg();
+  const isPro = !!session.user && org?.plan === "Pro";
+  document.querySelectorAll(".ad-slot").forEach((el) => { el.hidden = isPro; });
+  document.body.classList.toggle("is-pro", isPro);
+  const upgrade = document.querySelector("#upgrade-pro");
+  if (upgrade) upgrade.hidden = !session.user || isPro;
+  const planLine = document.querySelector("#plan-line");
+  if (planLine) planLine.textContent = session.user && org ? (isPro ? "Plan: Pro (ad-free)" : "Plan: Free") : "";
+}
+
+async function upgradeToPro() {
+  try {
+    const data = await api("/api/billing/checkout", { method: "POST", body: "{}" });
+    if (data.url) { window.location.href = data.url; return; }
+    showToast(data.message || "Upgrades aren't available yet.");
+  } catch (error) {
+    showToast(error.message || "Could not start the upgrade.");
+  }
 }
 
 function renderAll() {
@@ -1440,6 +1463,7 @@ document.addEventListener("click", (event) => {
   if (target.id === "auth-close") closeAuthModal();
   if (target.id === "sign-out-button") signOut();
   if (target.id === "new-org-button") createOrganization();
+  if (target.id === "upgrade-pro") upgradeToPro();
   if (target.id === "delete-account-button") openDeleteAccountModal();
   if (target.id === "delete-close" || target.id === "delete-cancel") closeDeleteAccountModal();
   if (target.id === "delete-submit") submitDeleteAccount();
