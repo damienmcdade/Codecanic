@@ -320,6 +320,19 @@ export async function removeGithubInstallation(organizationId) {
   await q("DELETE FROM github_installations WHERE organization_id=$1", [organizationId]);
 }
 
+// --- billing / plans -------------------------------------------------------
+export async function setOrgPlan(organizationId, plan) {
+  await q("UPDATE organizations SET plan=$2 WHERE id=$1", [organizationId, plan]);
+}
+
+export async function countScansThisMonth(organizationId) {
+  const rows = await q(
+    "SELECT count(*)::int AS n FROM jobs WHERE organization_id=$1 AND type='scan' AND created_at >= date_trunc('month', now())",
+    [organizationId]
+  );
+  return rows[0]?.n ?? 0;
+}
+
 // --- background job queue --------------------------------------------------
 const mapJob = (r) => r && {
   id: r.id, type: r.type, status: r.status, organizationId: r.organization_id, userId: r.user_id,

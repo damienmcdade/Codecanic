@@ -303,6 +303,25 @@ try {
     }
   }
 
+  // 11b. Billing + suppressions (new endpoints) ---------------------------
+  console.log("\nBilling & suppressions");
+  {
+    const bill = await call("GET", `/api/billing?organization=${orgSlug}`, { origin: null });
+    ok("GET /api/billing → Free plan + usage", bill.status === 200 && bill.json?.plan === "Free" && typeof bill.json?.usage?.scansThisMonth === "number", `status=${bill.status}`);
+    ok("billing reports entitlements (ads on for Free)", bill.json?.entitlements?.adFree === false);
+    const checkout = await call("POST", `/api/billing/checkout?organization=${orgSlug}`, { body: {} });
+    ok("checkout without Stripe configured → not configured (no crash)", checkout.status === 200 && checkout.json?.configured === false, `status=${checkout.status}`);
+    const fakeHook = await call("POST", "/api/billing/webhook", { origin: null, body: { type: "checkout.session.completed" } });
+    ok("webhook rejects an unsigned event → 400", fakeHook.status === 400, `status=${fakeHook.status}`);
+
+    const sup = await call("POST", `/api/suppressions?organization=${orgSlug}`, { body: { fingerprint: "hygiene:no-ci", reason: "n/a here" } });
+    ok("POST /api/suppressions → suppressed", sup.status === 200 && sup.json?.status === "suppressed", `status=${sup.status}`);
+    const supList = await call("GET", `/api/suppressions?organization=${orgSlug}`, { origin: null });
+    ok("GET /api/suppressions lists it", supList.json?.suppressions?.some((s) => s.fingerprint === "hygiene:no-ci"));
+    const unsup = await call("DELETE", `/api/suppressions?organization=${orgSlug}`, { body: { fingerprint: "hygiene:no-ci" } });
+    ok("DELETE /api/suppressions → unsuppressed", unsup.status === 200 && unsup.json?.status === "unsuppressed");
+  }
+
   // 12. unauth scan -------------------------------------------------------
   {
     const saved = jar;

@@ -1,5 +1,6 @@
 const plans = {
-  Free: { queueDelayMs: 200, workers: 24, label: "Priority queue" }
+  Free: { name: "Free", queueDelayMs: 200, workers: 24, label: "Priority queue", adFree: false, monthlyScanLimit: 50 },
+  Pro: { name: "Pro", queueDelayMs: 0, workers: 48, label: "Pro queue", adFree: true, monthlyScanLimit: null }
 };
 
 const connectorConfig = {
@@ -90,6 +91,11 @@ export function readBody(req) {
 
 export function planFor(name) {
   return plans[name] || plans.Free;
+}
+
+export function entitlements(name) {
+  const p = planFor(name);
+  return { plan: p.name, adFree: p.adFree, monthlyScanLimit: p.monthlyScanLimit };
 }
 
 export function getConnector(name) {
