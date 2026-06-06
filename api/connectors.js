@@ -1,13 +1,12 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { getConnector, json } from "./_lib.js";
 import * as repo from "./_repo.js";
-import { currentUserContext } from "./_auth.js";
+import { currentUserContext, secret as sessionSecret } from "./_auth.js";
 import { decryptSecret } from "./_crypto.js";
 
 function signState(payload) {
-  const secret = process.env.CODECANIC_SESSION_SECRET || "codecanic-development-secret-do-not-use-in-prod";
   const value = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = createHmac("sha256", secret).update(value).digest("base64url");
+  const signature = createHmac("sha256", sessionSecret()).update(value).digest("base64url");
   return `${value}.${signature}`;
 }
 

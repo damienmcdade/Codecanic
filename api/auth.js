@@ -34,6 +34,15 @@ function clientKey(req, email) {
   return `${ip}|${email}`;
 }
 
+// A second lockout bucket keyed on the email ALONE. The per-(ip,email) bucket is
+// defeatable by rotating the spoofable X-Forwarded-For header, so this account-
+// wide bucket (with a higher threshold to tolerate legit multi-device logins)
+// throttles distributed online guessing against a single account.
+function accountKey(email) {
+  return `acct|${email}`;
+}
+const ACCOUNT_MAX_ATTEMPTS = 15;
+
 // Email verification is enforced when we can actually send mail, or when
 // explicitly required. Without a provider we don't lock users out of a feature
 // they could never unlock, so signups are auto-verified in that case.
@@ -43,6 +52,9 @@ function emailVerificationRequired() {
 
 function baseUrl(req) {
   if (process.env.CODECANIC_APP_URL) return process.env.CODECANIC_APP_URL.replace(/\/$/, "");
+  // Don't trust the Host header for password-reset/verification links in prod —
+  // a forged Host would point token links at an attacker domain.
+  if (isProductionLike()) return "https://codecanic.app";
   const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
   return `${proto}://${req.headers.host || "localhost"}`;
 }
@@ -148,8 +160,9 @@ async function login(req, res) {
   const email = normalizeEmail(body.email);
   const password = String(body.password || "");
   const key = clientKey(req, email);
+  const acctKey = accountKey(email);
 
-  const lockMs = await repo.loginLockRemaining(key);
+  const lockMs = Math.max(await repo.loginLockRemaining(key), await repo.loginLockRemaining(acctKey));
   if (lockMs > 0) {
     const retryAfter = Math.ceil(lockMs / 1000);
     res.setHeader("Retry-After", String(retryAfter));
@@ -161,10 +174,12 @@ async function login(req, res) {
   const ok = user ? await verifyPassword(password, user.passwordHash) : false;
   if (!user || !ok) {
     await repo.recordLoginFailure(key, LOGIN_MAX_ATTEMPTS, LOGIN_LOCKOUT_MS);
+    await repo.recordLoginFailure(acctKey, ACCOUNT_MAX_ATTEMPTS, LOGIN_LOCKOUT_MS);
     json(res, 401, { error: "Email or password is incorrect." });
     return;
   }
   await repo.clearLoginFailures(key);
+  await repo.clearLoginFailures(acctKey);
 
   // Transparently upgrade legacy/low-cost password hashes on successful login.
   if (passwordNeedsUpgrade(user.passwordHash)) {

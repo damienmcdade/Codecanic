@@ -62,6 +62,13 @@ try {
   ok("tampered body is rejected", verifyStripeSignature(body + "x", goodSig, secret) === false);
   ok("wrong secret is rejected", verifyStripeSignature(body, goodSig, "whsec_other") === false);
   ok("missing/garbage header is rejected", verifyStripeSignature(body, "nope", secret) === false);
+
+  // Replay protection: a correctly-signed but stale event (outside the tolerance)
+  // is rejected so a captured webhook can't be replayed indefinitely.
+  const oldT = t - 3600; // 1h ago
+  const oldSig = `t=${oldT},v1=${createHmac("sha256", secret).update(`${oldT}.${body}`).digest("hex")}`;
+  ok("stale (replayed) signature is rejected", verifyStripeSignature(body, oldSig, secret) === false);
+  ok("stale signature accepted when tolerance disabled", verifyStripeSignature(body, oldSig, secret, 0) === true);
 } finally {
   await closeDb();
   await rm(dir, { recursive: true, force: true });

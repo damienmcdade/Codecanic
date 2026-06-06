@@ -18,7 +18,7 @@ export function isProductionLike() {
 
 const DEV_FALLBACK_SECRET = "codecanic-development-secret-do-not-use-in-prod";
 
-function secret() {
+export function secret() {
   const value = process.env.CODECANIC_SESSION_SECRET;
   if (value && value.length >= 32 && value !== DEV_FALLBACK_SECRET) return value;
   if (isProductionLike()) {

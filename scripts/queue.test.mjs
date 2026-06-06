@@ -46,11 +46,19 @@ try {
   const done = await repo.getJob(enq.id, org.id);
   ok("completeJob sets succeeded + result", done.status === "succeeded" && done.result?.n === 42);
 
+  // failJob re-queues transient failures until MAX_JOB_ATTEMPTS is reached, then
+  // marks the job permanently failed. (attempts is bumped by claimNextJob.)
   const enq2 = await repo.enqueueJob({ type: "scan", organizationId: org.id, payload: {} });
-  await repo.claimNextJob();
+  await repo.claimNextJob();              // attempts = 1
   await repo.failJob(enq2.id, "boom");
+  const retry1 = await repo.getJob(enq2.id, org.id);
+  ok("failJob re-queues a transient failure", retry1.status === "queued" && /boom/.test(retry1.error));
+  for (let i = 1; i < repo.MAX_JOB_ATTEMPTS; i++) {
+    await repo.claimNextJob();           // attempts = 2 ... MAX
+    await repo.failJob(enq2.id, "boom");
+  }
   const failed = await repo.getJob(enq2.id, org.id);
-  ok("failJob sets failed + error", failed.status === "failed" && /boom/.test(failed.error));
+  ok("failJob sets failed + error after retries exhausted", failed.status === "failed" && /boom/.test(failed.error));
 
   console.log("\nOrg scoping (no cross-tenant reads)");
   ok("getJob is org-scoped", (await repo.getJob(enq.id, otherOrg.id)) == null);

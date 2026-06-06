@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { getConnector, json, readBody } from "./_lib.js";
 import * as repo from "./_repo.js";
-import { currentUserContext } from "./_auth.js";
+import { currentUserContext, secret as sessionSecret, isProductionLike } from "./_auth.js";
 import { encryptSecret } from "./_crypto.js";
 import { githubAppConfigured } from "./_github.js";
 
@@ -25,17 +25,15 @@ const tokenExchange = {
 };
 
 function signState(payload) {
-  const secret = process.env.CODECANIC_SESSION_SECRET || "codecanic-development-secret-do-not-use-in-prod";
   const value = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = createHmac("sha256", secret).update(value).digest("base64url");
+  const signature = createHmac("sha256", sessionSecret()).update(value).digest("base64url");
   return `${value}.${signature}`;
 }
 
 function verifyState(token) {
   if (!token || typeof token !== "string" || !token.includes(".")) return null;
   const [value, signature] = token.split(".");
-  const secret = process.env.CODECANIC_SESSION_SECRET || "codecanic-development-secret-do-not-use-in-prod";
-  const expected = createHmac("sha256", secret).update(value).digest("base64url");
+  const expected = createHmac("sha256", sessionSecret()).update(value).digest("base64url");
   if (signature.length !== expected.length) return null;
   if (signature !== expected) return null;
   try {
@@ -49,9 +47,20 @@ function verifyState(token) {
 
 function redirectUriFor(req, provider) {
   if (process.env.CODECANIC_REDIRECT_URI) return process.env.CODECANIC_REDIRECT_URI;
-  const protocol = req.headers["x-forwarded-proto"] || "http";
-  const host = req.headers.host || "codecanic.local";
-  return `${protocol}://${host}/api/oauth/callback?provider=${encodeURIComponent(provider)}`;
+  // Never derive security-sensitive URLs from the attacker-controllable Host
+  // header in production. Prefer CODECANIC_APP_URL, then a fixed prod default.
+  const base = appBaseUrl(req);
+  return `${base}/api/oauth/callback?provider=${encodeURIComponent(provider)}`;
+}
+
+// Resolves the canonical app origin without trusting the request Host header in
+// production. Falls back to the request host only in non-prod (local dev).
+function appBaseUrl(req) {
+  if (process.env.CODECANIC_APP_URL) return process.env.CODECANIC_APP_URL.replace(/\/$/, "");
+  if (isProductionLike()) return "https://codecanic.app";
+  const protocol = (req.headers["x-forwarded-proto"] || "http").split(",")[0];
+  const host = req.headers.host || "localhost";
+  return `${protocol}://${host}`;
 }
 
 function clientSecretEnvFor(connectorEnv) {

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { json } from "./_lib.js";
+import { q, backendKind } from "./_db.js";
 
 // Build stamp written by scripts/build.mjs at deploy time. Read once at startup.
 let buildInfo = { commit: null, builtAt: null };
@@ -11,15 +12,30 @@ try {
 }
 const stampedCommit = buildInfo.commit && buildInfo.commit !== "unknown" ? buildInfo.commit : null;
 
-export default function handler(req, res) {
+// Probe the data layer with a short-timeout SELECT 1 so a dead DB surfaces as an
+// unhealthy check (drives Railway's restart policy + uptime monitors) instead of
+// a falsely-green "ok".
+async function probeDb() {
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("db probe timeout")), 3000));
+  try {
+    await Promise.race([q("SELECT 1"), timeout]);
+    return { ok: true, kind: await backendKind().catch(() => null) };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
+export default async function handler(req, res) {
   if (req.method !== "GET") {
     json(res, 405, { error: "Method not allowed" });
     return;
   }
 
-  json(res, 200, {
+  const db = await probeDb();
+  json(res, db.ok ? 200 : 503, {
     name: "Codecanic",
-    status: "ok",
+    status: db.ok ? "ok" : "degraded",
+    db: db.ok ? { status: "up", kind: db.kind } : { status: "down", error: db.error },
     version: process.env.npm_package_version || "0.1.0",
     platform:
       process.env.RAILWAY_SERVICE_NAME ||

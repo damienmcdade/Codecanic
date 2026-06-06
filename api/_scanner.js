@@ -147,6 +147,10 @@ async function walk(root) {
     for (const entry of entries) {
       if (files.length >= MAX_FILES) return;
       const full = join(dir, entry.name);
+      // Skip symlinks: a symlinked directory cycle would waste the clone budget
+      // re-walking, and a symlink out of the workdir could pull in unintended
+      // files for content scanning.
+      if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
         await recur(full);

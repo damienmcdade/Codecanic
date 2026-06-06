@@ -371,9 +371,24 @@ export async function completeJob(id, result) {
     [id, JSON.stringify(result ?? null)]);
 }
 
+// Max delivery attempts before a job is considered permanently failed. The
+// attempts counter is incremented in claimNextJob, so by the time we get here it
+// reflects how many times this job has been tried.
+export const MAX_JOB_ATTEMPTS = Number(process.env.CODECANIC_MAX_JOB_ATTEMPTS || 3);
+
 export async function failJob(id, error) {
-  await q("UPDATE jobs SET status='failed', error=$2, finished_at=now() WHERE id=$1",
-    [id, String(error).slice(0, 2000)]);
+  const msg = String(error).slice(0, 2000);
+  // Re-queue transient failures (network blips, brief DB hiccups) up to
+  // MAX_JOB_ATTEMPTS; only mark permanently 'failed' once retries are exhausted.
+  await q(
+    `UPDATE jobs
+       SET status = CASE WHEN attempts < $2 THEN 'queued' ELSE 'failed' END,
+           started_at = CASE WHEN attempts < $2 THEN NULL ELSE started_at END,
+           finished_at = CASE WHEN attempts < $2 THEN NULL ELSE now() END,
+           error = $3
+     WHERE id = $1`,
+    [id, MAX_JOB_ATTEMPTS, msg]
+  );
 }
 
 // Re-queue jobs left 'running' by a crashed/restarted worker (or stuck too long).

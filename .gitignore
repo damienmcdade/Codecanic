@@ -33,3 +33,4 @@ ios/Codecanic/DerivedData/
 
 # OS
 .DS_Store
+.vercel

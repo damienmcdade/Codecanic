@@ -127,10 +127,24 @@ let readyPromise = null;
 async function buildPgBackend(connectionString) {
   const pg = (await import("pg")).default;
   // No TLS on local or Railway private-network connections (railway.internal);
-  // TLS (relaxed cert check) for everything else (managed public endpoints).
+  // TLS for everything else (managed public endpoints). Certificate verification
+  // is ON by default (managed PG providers present CA-signed certs); set
+  // CODECANIC_PG_INSECURE_SSL=1 only if a provider truly requires relaxed certs.
   const noSsl = /sslmode=disable|localhost|127\.0\.0\.1|\.railway\.internal/.test(connectionString);
-  const ssl = noSsl ? false : { rejectUnauthorized: false };
-  const pool = new pg.Pool({ connectionString, ssl, max: Number(process.env.CODECANIC_PG_POOL || 10) });
+  const insecure = process.env.CODECANIC_PG_INSECURE_SSL === "1";
+  const ssl = noSsl ? false : { rejectUnauthorized: !insecure };
+  const pool = new pg.Pool({
+    connectionString,
+    ssl,
+    max: Number(process.env.CODECANIC_PG_POOL || 10),
+    connectionTimeoutMillis: Number(process.env.CODECANIC_PG_CONNECT_TIMEOUT_MS || 8000),
+    idleTimeoutMillis: Number(process.env.CODECANIC_PG_IDLE_TIMEOUT_MS || 30000),
+    statement_timeout: Number(process.env.CODECANIC_PG_STATEMENT_TIMEOUT_MS || 30000)
+  });
+  // A pool 'error' on an idle client would otherwise crash the process.
+  pool.on("error", (err) => {
+    process.stderr.write(JSON.stringify({ level: "error", msg: "pg.pool_error", err: String(err?.message || err) }) + "\n");
+  });
   return {
     kind: "postgres",
     async exec(sql) { await pool.query(sql); },
@@ -176,8 +190,28 @@ async function buildPgliteBackend() {
   };
 }
 
+// Mirrors _auth.isProductionLike() — kept local to avoid an import cycle
+// (_auth -> _repo -> _db).
+function isProductionLike() {
+  return Boolean(
+    process.env.NODE_ENV === "production" ||
+      process.env.VERCEL === "1" ||
+      process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_PROJECT_ID
+  );
+}
+
 async function init() {
   const url = process.env.DATABASE_URL;
+  // Refuse to boot in production on the embedded PGlite store: it lives on the
+  // container's ephemeral disk, so every redeploy/restart would silently wipe
+  // all users, orgs, reports, and jobs. Require a managed Postgres URL instead.
+  if (!url && isProductionLike() && process.env.CODECANIC_ALLOW_EPHEMERAL_DB !== "1") {
+    throw new Error(
+      "DATABASE_URL must be set in production. Refusing to start on ephemeral PGlite (data would be lost on redeploy). " +
+        "Set CODECANIC_ALLOW_EPHEMERAL_DB=1 to override for a throwaway environment."
+    );
+  }
   backend = url ? await buildPgBackend(url) : await buildPgliteBackend();
   await backend.exec(SCHEMA);
   // When moving to managed Postgres, copy the volume's PGlite (current source of

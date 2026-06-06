@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { json, entitlements, planFor, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { logger } from "./_log.js";
+import { isProductionLike } from "./_auth.js";
 
 // Codecanic stays free + ad-supported; Pro is an optional paid upgrade
 // (ad-free + unlimited scans). Stripe is used when configured; without keys,
@@ -21,6 +22,8 @@ function readRaw(req) {
 
 function appUrl(req) {
   if (process.env.CODECANIC_APP_URL) return process.env.CODECANIC_APP_URL.replace(/\/$/, "");
+  // Stripe success/cancel URLs must not be derived from a forged Host in prod.
+  if (isProductionLike()) return "https://codecanic.app";
   const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
   return `${proto}://${req.headers.host || "localhost"}`;
 }
@@ -65,10 +68,16 @@ async function checkout(req, res, context) {
 }
 
 // Verify Stripe's webhook signature: v1 = HMAC-SHA256(`${t}.${rawBody}`, secret).
-export function verifyStripeSignature(rawBody, sigHeader, secret) {
+// Also enforces a timestamp tolerance (default 5 min) so a captured event can't
+// be replayed indefinitely. Pass toleranceSec=0 to disable the time check.
+export function verifyStripeSignature(rawBody, sigHeader, secret, toleranceSec = 300) {
   if (!sigHeader || !secret) return false;
   const parts = Object.fromEntries(sigHeader.split(",").map((kv) => kv.split("=")));
   if (!parts.t || !parts.v1) return false;
+  if (toleranceSec > 0) {
+    const ts = Number(parts.t);
+    if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > toleranceSec) return false;
+  }
   const expected = createHmac("sha256", secret).update(`${parts.t}.${rawBody}`).digest("hex");
   const a = Buffer.from(parts.v1), b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
