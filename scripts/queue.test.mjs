@@ -20,6 +20,7 @@ function ok(name, cond, detail = "") {
 const repo = await import("../api/_repo.js");
 const { drainOnce } = await import("../api/_worker.js");
 const { closeDb } = await import("../api/_db.js");
+const { applySuppressions } = await import("../api/_jobs.js");
 
 const owner = {
   id: randomUUID(), email: "q@codecanic.local", name: "q", passwordHash: "x",
@@ -91,10 +92,12 @@ try {
   await repo.removeSuppression(org.id, "hygiene:no-ci");
   supp = await repo.suppressedFingerprints(org.id);
   ok("removeSuppression un-hides the finding", !supp.has("hygiene:no-ci") && supp.has("sast:js-eval:app.js"));
-  // The scan executor hides suppressed findings: simulate its filter.
+  // Exercise the REAL executor filter (api/_jobs.js applySuppressions) against
+  // the live suppression set — not a reimplementation of it.
   const findings = [{ fingerprint: "sast:js-eval:app.js" }, { fingerprint: "dep:x" }];
-  const visible = findings.filter((f) => !supp.has(f.fingerprint));
+  const { visible, suppressedCount } = applySuppressions(findings, supp);
   ok("executor filter hides suppressed, keeps the rest", visible.length === 1 && visible[0].fingerprint === "dep:x");
+  ok("executor filter reports the suppressed count", suppressedCount === 1);
 } finally {
   await closeDb();
   await rm(dir, { recursive: true, force: true });

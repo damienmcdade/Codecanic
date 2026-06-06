@@ -14,6 +14,7 @@
     <meta name="google-adsense-account" content="ca-pub-8731629548430880" />
   </head>
   <body>
+    <a class="skip-link" href="#workspace-main">Skip to main content</a>
     <div class="shell">
       <aside class="sidebar" aria-label="Primary navigation">
         <a class="brand" href="#overview" aria-label="Codecanic home">
@@ -70,7 +71,7 @@
         </div>
       </aside>
 
-      <main class="workspace">
+      <main class="workspace" id="workspace-main" tabindex="-1">
         <header class="topbar">
           <div>
             <p class="eyebrow">Unified code operations</p>
@@ -118,15 +119,15 @@
             <div class="signal-board" aria-label="Scan health summary">
               <div class="signal-item critical">
                 <span>Critical</span>
-                <strong id="critical-count">6</strong>
+                <strong id="critical-count">0</strong>
               </div>
               <div class="signal-item warning">
                 <span>Warnings</span>
-                <strong id="warning-count">18</strong>
+                <strong id="warning-count">0</strong>
               </div>
               <div class="signal-item clean">
                 <span>Autofixable</span>
-                <strong id="autofix-count">21</strong>
+                <strong id="autofix-count">0</strong>
               </div>
               <div class="scan-meter" aria-hidden="true">
                 <span></span>
@@ -203,10 +204,10 @@
               <h2>Findings report</h2>
             </div>
             <div class="segmented" role="group" aria-label="Repair scope">
-              <button class="selected" type="button" data-filter="all">All</button>
-              <button type="button" data-filter="critical">Critical</button>
-              <button type="button" data-filter="security">Security</button>
-              <button type="button" data-filter="performance">Performance</button>
+              <button class="selected" type="button" data-filter="all" aria-pressed="true">All</button>
+              <button type="button" data-filter="critical" aria-pressed="false">Critical</button>
+              <button type="button" data-filter="security" aria-pressed="false">Security</button>
+              <button type="button" data-filter="performance" aria-pressed="false">Performance</button>
             </div>
           </div>
           <div class="repair-toolbar">
@@ -475,7 +476,7 @@
           </label>
           <label>
             <span>Password <small class="muted" data-auth-only="signup">(15+ chars, upper + lower + digit + symbol)</small></span>
-            <input name="password" type="password" minlength="8" autocomplete="current-password" required />
+            <input name="password" type="password" minlength="15" autocomplete="current-password" required />
           </label>
           <label class="checkbox-row" data-auth-only="signup">
             <input type="checkbox" name="ageConfirm" id="ageConfirm" />

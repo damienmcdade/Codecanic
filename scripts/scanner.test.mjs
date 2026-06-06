@@ -106,8 +106,12 @@ try {
     const depFindings = byCat("dependency");
     ok("finds known CVE in lodash@4.17.15 via OSV", depFindings.some((f) => /lodash/.test(f.target)), `osv=${report.scanned.osv}`);
     ok("dependency finding cites an OSV/CVE reference", depFindings.length === 0 || depFindings.every((f) => /osv\.dev/.test(f.reference || "")));
+  } else if (process.env.CODECANIC_REQUIRE_NETWORK_TESTS === "1") {
+    // Strict mode (CI with network): a skipped core assertion is a failure, so a
+    // green run can't silently hide a broken OSV/scan path.
+    ok("OSV dependency lookup reachable (strict mode)", false, `osv=${report.scanned.osv}`);
   } else {
-    console.log(`  ⊘ SKIP — OSV unreachable (${report.scanned.osv}); offline run`);
+    console.log(`  ⊘ SKIP — OSV unreachable (${report.scanned.osv}); offline run (set CODECANIC_REQUIRE_NETWORK_TESTS=1 to enforce)`);
   }
 
   console.log("\nReport shape & summary");

@@ -1,14 +1,8 @@
-import { createHmac, randomUUID } from "node:crypto";
-import { getConnector, json } from "./_lib.js";
+import { randomUUID } from "node:crypto";
+import { getConnector, json, signState, appBaseUrl, orgFromRequest, requestUrl, STATE_TTL_MS } from "./_lib.js";
 import * as repo from "./_repo.js";
-import { currentUserContext, secret as sessionSecret } from "./_auth.js";
+import { currentUserContext } from "./_auth.js";
 import { decryptSecret } from "./_crypto.js";
-
-function signState(payload) {
-  const value = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = createHmac("sha256", sessionSecret()).update(value).digest("base64url");
-  return `${value}.${signature}`;
-}
 
 const providerGuides = {
   GitHub: {
@@ -145,7 +139,7 @@ const projectEndpoints = {
       (Array.isArray(body) ? body : []).map((repo) => ({
         id: String(repo.id),
         name: repo.full_name,
-        description: repo.description || repo.private ? "Private" : "Public",
+        description: repo.description || (repo.private ? "Private" : "Public"),
         url: repo.html_url
       }))
   },
@@ -267,10 +261,7 @@ async function handleVerify(req, res, url) {
     json(res, 401, { error: "Sign in to verify connections." });
     return;
   }
-  const requestedOrg = req.headers["x-codecanic-org"] || url.searchParams.get("organization");
-  const organization = requestedOrg
-    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-    : context.organizations[0];
+  const organization = orgFromRequest(req, context, url);
   if (!organization) {
     json(res, 400, { error: "Select an organization first." });
     return;
@@ -366,10 +357,7 @@ async function handleProjects(req, res, url) {
     json(res, 401, { error: "Sign in required." });
     return;
   }
-  const requestedOrg = req.headers["x-codecanic-org"] || url.searchParams.get("organization");
-  const organization = requestedOrg
-    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-    : context.organizations[0];
+  const organization = orgFromRequest(req, context, url);
   if (!organization) {
     json(res, 400, { error: "Select an organization first." });
     return;
@@ -430,10 +418,10 @@ async function handleStart(req, res, url) {
   const isManual = guide?.type === "manual";
   const configured = isManual ? true : Boolean(process.env[connector.env]);
   const clientSecretEnv = connector.env.replace(/_CLIENT_ID$/, "_CLIENT_SECRET");
-  const protocol = req.headers["x-forwarded-proto"] || (url.protocol === "https:" ? "https" : "http");
-  const host = req.headers.host || "codecanic.local";
-  const defaultRedirect = `${protocol}://${host}/api/oauth/callback?provider=${encodeURIComponent(name)}`;
-  const redirectUri = process.env.CODECANIC_REDIRECT_URI || defaultRedirect;
+  // appBaseUrl never trusts the Host header in production (shared in _lib.js).
+  const redirectUri =
+    process.env.CODECANIC_REDIRECT_URI ||
+    `${appBaseUrl(req)}/api/oauth/callback?provider=${encodeURIComponent(name)}`;
 
   const base = {
     name,
@@ -478,10 +466,7 @@ async function handleStart(req, res, url) {
     return;
   }
 
-  const requestedOrg = req.headers["x-codecanic-org"] || url.searchParams.get("organization");
-  const organization = requestedOrg
-    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-    : context.organizations[0];
+  const organization = orgFromRequest(req, context, url);
   if (!organization) {
     json(res, 400, { error: "Select an organization first." });
     return;
@@ -506,7 +491,7 @@ async function handleStart(req, res, url) {
     userId: context.user.id,
     organizationId: organization.id,
     provider: name,
-    expiresAt: Date.now() + 10 * 60_000
+    expiresAt: Date.now() + STATE_TTL_MS
   });
 
   const authUrl = new URL(connector.authBase);
@@ -529,12 +514,7 @@ async function handleStart(req, res, url) {
 
 async function handleList(req, res) {
   const context = await currentUserContext(req);
-  const requestedOrg = req.headers["x-codecanic-org"] || null;
-  const organization = context
-    ? requestedOrg
-      ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-      : context.organizations[0]
-    : null;
+  const organization = context ? orgFromRequest(req, context) : null;
   const orgId = organization?.id || null;
   const connections = orgId ? await repo.credsForOrg(orgId) : [];
 
@@ -555,7 +535,7 @@ export default async function handler(req, res) {
     json(res, 405, { error: "Method not allowed" });
     return;
   }
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const url = requestUrl(req);
   const action = url.searchParams.get("action");
 
   try {

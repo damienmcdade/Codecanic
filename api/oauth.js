@@ -1,7 +1,7 @@
-import { createHmac, randomUUID } from "node:crypto";
-import { getConnector, json, readBody } from "./_lib.js";
+import { randomUUID } from "node:crypto";
+import { getConnector, json, readBody, signState, verifyState, appBaseUrl, orgFromRequest, requestUrl, STATE_TTL_MS } from "./_lib.js";
 import * as repo from "./_repo.js";
-import { currentUserContext, secret as sessionSecret, isProductionLike } from "./_auth.js";
+import { currentUserContext } from "./_auth.js";
 import { encryptSecret } from "./_crypto.js";
 import { githubAppConfigured } from "./_github.js";
 
@@ -24,43 +24,10 @@ const tokenExchange = {
   }
 };
 
-function signState(payload) {
-  const value = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = createHmac("sha256", sessionSecret()).update(value).digest("base64url");
-  return `${value}.${signature}`;
-}
-
-function verifyState(token) {
-  if (!token || typeof token !== "string" || !token.includes(".")) return null;
-  const [value, signature] = token.split(".");
-  const expected = createHmac("sha256", sessionSecret()).update(value).digest("base64url");
-  if (signature.length !== expected.length) return null;
-  if (signature !== expected) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
-    if (!payload.expiresAt || payload.expiresAt < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
 function redirectUriFor(req, provider) {
   if (process.env.CODECANIC_REDIRECT_URI) return process.env.CODECANIC_REDIRECT_URI;
-  // Never derive security-sensitive URLs from the attacker-controllable Host
-  // header in production. Prefer CODECANIC_APP_URL, then a fixed prod default.
-  const base = appBaseUrl(req);
-  return `${base}/api/oauth/callback?provider=${encodeURIComponent(provider)}`;
-}
-
-// Resolves the canonical app origin without trusting the request Host header in
-// production. Falls back to the request host only in non-prod (local dev).
-function appBaseUrl(req) {
-  if (process.env.CODECANIC_APP_URL) return process.env.CODECANIC_APP_URL.replace(/\/$/, "");
-  if (isProductionLike()) return "https://codecanic.app";
-  const protocol = (req.headers["x-forwarded-proto"] || "http").split(",")[0];
-  const host = req.headers.host || "localhost";
-  return `${protocol}://${host}`;
+  // appBaseUrl never trusts the Host header in production (shared in _lib.js).
+  return `${appBaseUrl(req)}/api/oauth/callback?provider=${encodeURIComponent(provider)}`;
 }
 
 function clientSecretEnvFor(connectorEnv) {
@@ -68,7 +35,7 @@ function clientSecretEnvFor(connectorEnv) {
 }
 
 async function start(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const url = requestUrl(req);
   const provider = url.searchParams.get("provider");
   const connector = provider ? getConnector(provider) : null;
   if (!connector) {
@@ -81,11 +48,7 @@ async function start(req, res) {
     json(res, 401, { error: "Sign in to connect providers." });
     return;
   }
-  const requestedOrg =
-    req.headers["x-codecanic-org"] || url.searchParams.get("organization") || null;
-  const organization = requestedOrg
-    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-    : context.organizations[0];
+  const organization = orgFromRequest(req, context, url);
   if (!organization) {
     json(res, 400, { error: "Select an organization before connecting providers." });
     return;
@@ -117,7 +80,7 @@ async function start(req, res) {
     userId: context.user.id,
     organizationId: organization.id,
     provider,
-    expiresAt: Date.now() + 10 * 60_000
+    expiresAt: Date.now() + STATE_TTL_MS
   });
   const authUrl = new URL(connector.authBase);
   authUrl.searchParams.set("client_id", clientId);
@@ -208,7 +171,7 @@ function sendHtml(res, status, body) {
 }
 
 async function callback(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const url = requestUrl(req);
   const provider = url.searchParams.get("provider");
   const code = url.searchParams.get("code");
   const stateToken = url.searchParams.get("state");
@@ -304,10 +267,7 @@ async function manual(req, res) {
     json(res, 422, { error: "Railway token looks too short. Generate a token at railway.app/account/tokens." });
     return;
   }
-  const requestedOrg = req.headers["x-codecanic-org"] || null;
-  const organization = requestedOrg
-    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-    : context.organizations[0];
+  const organization = orgFromRequest(req, context);
   if (!organization) {
     json(res, 400, { error: "Select an organization before connecting providers." });
     return;
@@ -346,10 +306,7 @@ async function disconnect(req, res) {
     json(res, 400, { error: "Provider is required." });
     return;
   }
-  const requestedOrg = req.headers["x-codecanic-org"] || null;
-  const organization = requestedOrg
-    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-    : context.organizations[0];
+  const organization = orgFromRequest(req, context);
   if (!organization) {
     json(res, 400, { error: "Select an organization first." });
     return;
@@ -366,11 +323,7 @@ async function status(req, res) {
     json(res, 401, { error: "Sign in required" });
     return;
   }
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  const requestedOrg = req.headers["x-codecanic-org"] || url.searchParams.get("organization");
-  const organization = requestedOrg
-    ? context.organizations.find((org) => org.slug === requestedOrg || org.id === requestedOrg)
-    : context.organizations[0];
+  const organization = orgFromRequest(req, context);
   if (!organization) {
     json(res, 200, { connections: [] });
     return;
@@ -378,13 +331,6 @@ async function status(req, res) {
   const creds = await repo.credsForOrg(organization.id);
   const connections = creds.map(({ provider, scope, tokenType, updatedAt }) => ({ provider, scope, tokenType, updatedAt }));
   json(res, 200, { connections });
-}
-
-function orgFromRequest(req, context, url) {
-  const requested = req.headers["x-codecanic-org"] || url.searchParams.get("organization");
-  return requested
-    ? context.organizations.find((o) => o.slug === requested || o.id === requested)
-    : context.organizations[0];
 }
 
 // GitHub App (least-privilege, per-repo): return the install URL with signed state.
@@ -395,7 +341,7 @@ async function githubAppStart(req, res) {
     json(res, 200, { configured: false, message: "GitHub App is not configured on this deployment; OAuth connect is available instead." });
     return;
   }
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const url = requestUrl(req);
   const organization = orgFromRequest(req, context, url);
   if (!organization) { json(res, 400, { error: "Select an organization first." }); return; }
   const state = signState({ kind: "github-app", userId: context.user.id, organizationId: organization.id, expiresAt: Date.now() + 10 * 60_000 });
@@ -405,7 +351,7 @@ async function githubAppStart(req, res) {
 
 // GitHub redirects here (the App's Setup URL) after install with installation_id.
 async function githubAppCallback(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const url = requestUrl(req);
   const installationId = url.searchParams.get("installation_id");
   const payload = verifyState(url.searchParams.get("state"));
   if (!payload || payload.kind !== "github-app" || !installationId) {
@@ -421,7 +367,7 @@ async function githubAppCallback(req, res) {
 }
 
 export default async function handler(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  const url = requestUrl(req);
   const action = url.pathname.replace(/^\/api\/oauth\/?/, "");
   try {
     if (action === "start" && req.method === "POST") return await start(req, res);

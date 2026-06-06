@@ -5,7 +5,7 @@
 // `repo` scope. When GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY are configured and
 // an org has installed the app, scans/repairs mint a fresh installation token;
 // otherwise they fall back to the org's OAuth token.
-import { createSign, randomUUID } from "node:crypto";
+import { createSign } from "node:crypto";
 import * as repo from "./_repo.js";
 import { decryptSecret } from "./_crypto.js";
 
@@ -73,6 +73,3 @@ export async function hasConnection(host, organizationId) {
   const cred = await repo.findConnectorCred(provider, organizationId);
   return Boolean(cred?.accessToken);
 }
-
-// Signed state for the App install round-trip (reuses the session-secret HMAC).
-export { randomUUID };

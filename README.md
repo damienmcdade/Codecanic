@@ -44,9 +44,11 @@ npm run dev
 - `GET /api/oauth/callback?provider=...&code=...&state=...` is the redirect target; it verifies the signed state, exchanges the code for an access token, and persists credentials scoped to the active organization.
 - `GET /api/oauth/status` lists provider connections for the active organization.
 - `GET /api/health` returns deployment identity for Vercel/Railway sync checks.
-- `POST /api/scan` **enqueues** a scan job (`202` + `{ jobId, pollUrl }`); a background worker runs the real v1 scan engine against `sourceUrl` (an `https://github.com|gitlab.com|bitbucket.org/owner/repo` URL): it shallow-clones the repo (using the organization's connected provider token for private repos), then returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query. Private repos with no connected provider return `422` (not fabricated findings); unsupported hosts/URLs return `400`.
+- `POST /api/scan` **enqueues** a scan job (`202` + `{ jobId, pollUrl }`); a background worker runs the real v1 scan engine against `sourceUrl` (an `https://github.com|gitlab.com|bitbucket.org/owner/repo` URL): it shallow-clones the repo (using the organization's connected provider token for private repos), then returns a prioritized report. Requires `Cookie: codecanic_session=...` and either an `X-Codecanic-Org` header or `?organization=` query. The endpoint validates the URL synchronously — unsupported hosts/malformed URLs return `400` up front (no job is queued, no fabricated findings). A private repo with no connected provider isn't rejected here; it **fails the job** with an access error visible via the poll URL (`GET /api/jobs/<id>` → `status: "failed"`), so the failure is honest rather than faked.
 - `POST /api/repair` takes a `reportId` (from a prior scan) + approved `findingIds`. It runs **synchronous validation** (report/findings exist, repo is GitHub, token present — `404`/`400`/`422` as appropriate), then **enqueues** a repair job (`202` + `{ jobId, pollUrl }`). The worker clones the repo with the org's GitHub token, applies deterministic safe patches, commits, pushes a branch, and **opens a real pull request**. Findings that can't be auto-fixed safely are listed in the PR body as manual action items.
 - `GET /api/jobs/<id>` returns a job's `status` (`queued`/`running`/`succeeded`/`failed`) and, when finished, its `result` (the scan report or repair outcome) or `error`. `GET /api/jobs` lists the org's recent jobs.
+- `GET /api/suppressions` lists the org's suppressed finding fingerprints; `POST` suppresses a `fingerprint` (with optional `reason`); `DELETE` un-suppresses it. Suppressed findings are hidden from future scan reports.
+- `GET /api/billing` returns the org's plan, entitlements, monthly scan usage/limit, and whether Stripe is configured. `POST /api/billing/checkout` starts a Stripe Checkout session for the Pro upgrade (or reports `configured:false`). `POST /api/billing/webhook` is the Stripe-signed endpoint that applies plan changes (with timestamp-tolerance replay protection).
 
 ### Repair engine (v1)
 
@@ -120,7 +122,7 @@ Proven by `npm run test:queue` (enqueue, claim-exactly-once, complete/fail, org 
 - Vercel: static web deployment is ready through `vercel.json`.
 - Railway: `railway.json` is included for hosting the current static MVP or future API/worker services.
 - GitHub: initialize a repo and push once GitHub authentication is active.
-- iOS/Android: add Capacitor later to package this PWA shell for App Store and Google Play.
+- iOS/Android: Capacitor shells are integrated (`capacitor.config.json`, `android/`, `ios/`). They load the live `https://codecanic.app` site in a native WebView; build a signed Android AAB/APK with `npx cap sync android && (cd android && ./gradlew bundleRelease)`. See [MOBILE_DEPLOY.md](MOBILE_DEPLOY.md).
 
 ## Next Build Steps
 
@@ -132,4 +134,4 @@ Proven by `npm run test:queue` (enqueue, claim-exactly-once, complete/fail, org 
 6. ~~Auth hardening.~~ ✓ Email verification, password reset, raised scrypt cost (with transparent upgrade), and DB-backed login lockout. Pluggable email via Resend (`api/_email.js`).
 7. ~~Observability + frontend auth pages.~~ ✓ Structured JSON logging with request ids, Sentry error tracking (`api/_log.js`, `api/_observability.js`), and the verify-banner / forgot-password / reset-password UI.
 8. ~~Async scan/repair job queues.~~ ✓ DB-backed queue + in-process worker (`api/_worker.js`, `api/_jobs.js`); endpoints return `202` + `jobId`, the UI polls `/api/jobs/<id>`.
-9. Add mobile packaging with Capacitor for iOS and Android.
+9. ~~Add mobile packaging with Capacitor for iOS and Android.~~ ✓ Capacitor iOS + Android WebView shells point at `https://codecanic.app`; signed Android AAB/APK build documented in [MOBILE_DEPLOY.md](MOBILE_DEPLOY.md).

@@ -11,16 +11,22 @@ import { planFor } from "./_lib.js";
 
 export const JOB_TYPES = { SCAN: "scan", REPAIR: "repair" };
 
+// Noise control: drop findings whose fingerprint the org has suppressed, and
+// report how many were hidden. Pure + exported so it's unit-tested directly
+// (rather than the test reimplementing the filter).
+export function applySuppressions(findings, suppressed) {
+  const visible = findings.filter((f) => !suppressed.has(f.fingerprint));
+  return { visible, suppressedCount: findings.length - visible.length };
+}
+
 async function executeScan(payload) {
   const meta = validateGitUrl(payload.sourceUrl);
   const plan = planFor(payload.tier || payload.organizationPlan || "Free");
   const token = await resolveRepoToken(meta.host, payload.organizationId);
   const result = await scanRepository({ sourceUrl: payload.sourceUrl, token, scanDepth: payload.scanDepth || "full" });
 
-  // Noise control: hide findings the org has suppressed; report how many.
   const suppressed = await repo.suppressedFingerprints(payload.organizationId);
-  const visible = result.findings.filter((f) => !suppressed.has(f.fingerprint));
-  const suppressedCount = result.findings.length - visible.length;
+  const { visible, suppressedCount } = applySuppressions(result.findings, suppressed);
   result.findings = visible;
   result.summary = { ...summarizeFindings(visible), suppressed: suppressedCount };
 

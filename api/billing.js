@@ -1,8 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { json, entitlements, planFor, resolveOrgContext } from "./_lib.js";
+import { json, entitlements, planFor, resolveOrgContext, appBaseUrl } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { logger } from "./_log.js";
-import { isProductionLike } from "./_auth.js";
 
 // Codecanic stays free + ad-supported; Pro is an optional paid upgrade
 // (ad-free + unlimited scans). Stripe is used when configured; without keys,
@@ -18,14 +17,6 @@ function readRaw(req) {
     req.on("end", () => resolve(body));
     req.on("error", reject);
   });
-}
-
-function appUrl(req) {
-  if (process.env.CODECANIC_APP_URL) return process.env.CODECANIC_APP_URL.replace(/\/$/, "");
-  // Stripe success/cancel URLs must not be derived from a forged Host in prod.
-  if (isProductionLike()) return "https://codecanic.app";
-  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
-  return `${proto}://${req.headers.host || "localhost"}`;
 }
 
 async function status(req, res, context) {
@@ -51,8 +42,8 @@ async function checkout(req, res, context) {
     "line_items[0][quantity]": "1",
     client_reference_id: context.organization.id,
     "metadata[organizationId]": context.organization.id,
-    success_url: `${appUrl(req)}/?upgraded=1`,
-    cancel_url: `${appUrl(req)}/?upgrade=cancelled`
+    success_url: `${appBaseUrl(req)}/?upgraded=1`,
+    cancel_url: `${appBaseUrl(req)}/?upgrade=cancelled`
   });
   const r = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",

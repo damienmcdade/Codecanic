@@ -276,8 +276,11 @@ try {
       ok("findings carry severity+target", (report?.findings || []).every((f) => f.severity && f.target));
       reportId = report?.id;
       realFindingId = report?.findings?.[0]?.id;
+    } else if (process.env.CODECANIC_REQUIRE_NETWORK_TESTS === "1") {
+      // Strict mode: the real clone+scan path must run, not silently skip.
+      ok("scan job → succeeded (strict mode)", false, `status=${finished.status} ${finished.error || ""}`);
     } else if (finished.status === "failed") {
-      console.log(`  ⊘ SKIP scan result — job failed in this env: ${finished.error || ""}`);
+      console.log(`  ⊘ SKIP scan result — job failed in this env: ${finished.error || ""} (set CODECANIC_REQUIRE_NETWORK_TESTS=1 to enforce)`);
     } else {
       console.log(`  ⊘ SKIP scan result — job did not finish (status=${finished.status})`);
     }
@@ -298,6 +301,8 @@ try {
       });
       ok("repair without connected GitHub → 422 (no fake PR)", repair.status === 422, `status=${repair.status} ${repair.text.slice(0,90)}`);
       ok("422 explains how to connect provider", /connect github/i.test(repair.json?.error || ""), `err=${repair.json?.error}`);
+    } else if (process.env.CODECANIC_REQUIRE_NETWORK_TESTS === "1") {
+      ok("real repair refusal path exercised (strict mode)", false, "no live report — scan did not produce one");
     } else {
       console.log("  ⊘ SKIP real repair path — no live report (offline)");
     }

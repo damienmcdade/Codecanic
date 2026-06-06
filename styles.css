@@ -19,6 +19,30 @@
   box-sizing: border-box;
 }
 
+/* Keyboard skip link: visually hidden until focused, then pinned top-left. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 1000;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--accent-strong);
+  color: #04121a;
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 8px;
+}
+
+/* Don't show a focus ring on the programmatically-focused main region. */
+#workspace-main:focus {
+  outline: none;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -557,7 +581,6 @@ button.is-firing {
 .connector-list,
 .scan-timeline,
 .findings,
-.pricing-grid,
 .job-list,
 .audit-list {
   display: grid;
@@ -568,7 +591,6 @@ button.is-firing {
 .connector,
 .timeline-step,
 .finding,
-.price-card,
 .job {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
@@ -587,7 +609,6 @@ button.is-firing {
 .connector:hover,
 .timeline-step:hover,
 .finding:hover,
-.price-card:hover,
 .job:hover {
   border-color: rgba(20, 184, 166, 0.42);
   box-shadow: inset 0 0 24px rgba(20, 184, 166, 0.06);
@@ -628,7 +649,6 @@ button.is-firing {
 .connector span,
 .timeline-step span,
 .finding p,
-.price-card p,
 .job span,
 .empty-state {
   color: var(--muted);
@@ -753,42 +773,6 @@ button.is-firing {
   font-weight: 950;
 }
 
-.pricing-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.pricing-grid-two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.price-card {
-  display: grid;
-  gap: 12px;
-  padding: 22px;
-}
-
-.price-card header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.price-card.featured {
-  border-color: rgba(249, 115, 22, 0.58);
-  box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.28), 0 0 32px rgba(249, 115, 22, 0.08);
-}
-
-.price-card.is-active {
-  border-color: rgba(20, 184, 166, 0.55);
-  box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.32), 0 0 28px rgba(20, 184, 166, 0.1);
-}
-
-.price-card h3,
-.price-card p {
-  margin: 0;
-}
-
 .plan-badge {
   font-size: 10px;
   text-transform: uppercase;
@@ -798,47 +782,6 @@ button.is-firing {
   background: rgba(148, 163, 184, 0.18);
   color: var(--muted);
   white-space: nowrap;
-}
-
-.price-card.featured .plan-badge {
-  background: rgba(20, 184, 166, 0.18);
-  color: var(--accent-strong);
-}
-
-.plan-bullets {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.plan-bullets li::before {
-  content: "→ ";
-  color: var(--accent-strong);
-}
-
-.plan-speed {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.billing-lede {
-  color: var(--muted);
-  margin: 0 0 14px;
-  max-width: 60ch;
-}
-
-.price {
-  font-size: 2rem;
-  font-weight: 950;
-}
-
-.price small {
-  color: var(--muted);
-  font-size: 0.9rem;
 }
 
 .job {
@@ -1002,10 +945,6 @@ button.is-firing {
     text-align: center;
   }
 
-  .pricing-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .deploy-tags {
     justify-content: flex-start;
   }
@@ -1041,8 +980,7 @@ button.is-firing {
 
   .nav-links,
   .bay-strip,
-  .signal-board,
-  .pricing-grid {
+  .signal-board {
     grid-template-columns: 1fr;
   }
 
@@ -1272,17 +1210,8 @@ button.is-firing {
   margin: 0 0 8px;
 }
 
-body.ads-off .ad-slot {
-  display: none;
-}
-
 .tier-card .plan-badge {
   margin-top: 6px;
-}
-
-body.ads-off .tier-card .plan-badge {
-  background: rgba(20, 184, 166, 0.18);
-  color: var(--accent-strong);
 }
 
 @media (max-width: 700px) {
@@ -1317,15 +1246,6 @@ body.ads-off .tier-card .plan-badge {
 .connect-title .muted {
   font-size: 12px;
   color: var(--muted);
-}
-
-.billing-notice-card {
-  width: min(440px, 100%);
-  gap: 14px;
-}
-
-.billing-notice-card .connect-snippet {
-  margin-top: 8px;
 }
 
 .link-button {
@@ -1991,29 +1911,6 @@ code {
 }
 
 .connector.is-idle .connector-status {
-  color: var(--muted);
-}
-
-.quickconnect-banner {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(20, 184, 166, 0.42);
-  background: linear-gradient(135deg, rgba(20, 184, 166, 0.14), rgba(15, 23, 42, 0.6));
-}
-
-.quickconnect-banner strong {
-  display: block;
-  color: var(--accent-strong);
-  font-size: 14px;
-}
-
-.quickconnect-banner span {
-  font-size: 12px;
   color: var(--muted);
 }
 

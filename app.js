@@ -18,18 +18,6 @@ const scanSteps = [
   ["Repair", "Prepare patches for user-approved segments and rerun validation."]
 ];
 
-const fallbackFindings = [
-  {
-    id: "demo-secret-env",
-    title: "Potential secret exposed in deployment environment",
-    type: "security",
-    severity: "critical",
-    confidence: 91,
-    target: "Vercel / Production",
-    fix: "Rotate key, move value to managed secret storage, and update deployment references.",
-    patchPreview: "Replace plaintext environment value with provider-managed secret reference."
-  }
-];
 
 const defaultState = {
   connectors: {},
@@ -71,10 +59,17 @@ function audit(message) {
   renderAudit();
 }
 
+let toastTimer = null;
 function showToast(message) {
   toast.textContent = message;
   toast.classList.add("visible");
-  window.setTimeout(() => toast.classList.remove("visible"), 2800);
+  // Cancel any prior hide timer so a stale timeout from an earlier toast can't
+  // dismiss this one early (each toast gets its full visible duration).
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.classList.remove("visible");
+    toastTimer = null;
+  }, 2800);
 }
 
 function escapeHtml(value) {
@@ -117,7 +112,7 @@ async function api(path, options = {}) {
 }
 
 function currentFindings() {
-  return state.activeReport?.findings || fallbackFindings;
+  return state.activeReport?.findings || [];
 }
 
 function renderConnectors() {
@@ -188,6 +183,13 @@ function renderFindings() {
       activeFilter === "all" || finding.severity === activeFilter || finding.type === activeFilter
   );
 
+  if (!visible.length) {
+    findingsRoot.innerHTML = state.activeReport
+      ? `<p class="empty-state">No findings match this filter.</p>`
+      : `<p class="empty-state">Connect a repository and run a scan to see prioritized findings.</p>`;
+    return;
+  }
+
   findingsRoot.innerHTML = visible
     .map((finding) => {
       const id = escapeHtml(finding.id);
@@ -245,7 +247,7 @@ function renderAudit() {
 }
 
 function renderSummary() {
-  const summary = state.activeReport?.summary || { critical: 1, warnings: 0, autofixable: 1 };
+  const summary = state.activeReport?.summary || { critical: 0, warnings: 0, autofixable: 0 };
   document.querySelector("#critical-count").textContent = summary.critical;
   document.querySelector("#warning-count").textContent = summary.warnings;
   document.querySelector("#autofix-count").textContent = summary.autofixable;
@@ -329,11 +331,73 @@ async function refreshSession() {
   await loadAllConnectorStatuses();
 }
 
+// --- Modal accessibility: focus trap, Escape-to-close, focus restore ---------
+// One open modal at a time. trapModal/releaseModal are called by each modal's
+// open/close fn; a single global keydown traps Tab + handles Escape, and a
+// backdrop click closes. This gives every dialog WCAG-conformant keyboard UX
+// without per-modal wiring.
+let lastFocusedBeforeModal = null;
+let activeModal = null;
+let activeModalClose = null;
+
+function modalFocusables(container) {
+  return [...container.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )].filter((el) => !el.hidden && el.offsetParent !== null);
+}
+
+function trapModal(modal, closeFn) {
+  lastFocusedBeforeModal = document.activeElement;
+  activeModal = modal;
+  activeModalClose = closeFn;
+  modal.setAttribute("aria-modal", "true");
+  const focusable = modalFocusables(modal);
+  (focusable[0] || modal).focus();
+}
+
+function releaseModal() {
+  if (activeModal) activeModal.removeAttribute("aria-modal");
+  activeModal = null;
+  activeModalClose = null;
+  if (lastFocusedBeforeModal && typeof lastFocusedBeforeModal.focus === "function") {
+    lastFocusedBeforeModal.focus();
+  }
+  lastFocusedBeforeModal = null;
+}
+
+document.addEventListener("keydown", (event) => {
+  if (!activeModal) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    activeModalClose?.();
+    return;
+  }
+  if (event.key === "Tab") {
+    const focusable = modalFocusables(activeModal);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+});
+
+// Click on the backdrop (the overlay element itself, not its children) closes.
+document.addEventListener("mousedown", (event) => {
+  if (activeModal && event.target === activeModal) activeModalClose?.();
+});
+
 function openAuthModal(mode = "signin") {
   const modal = document.querySelector("#auth-modal");
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
   setAuthMode(mode);
+  trapModal(modal, closeAuthModal);
 }
 
 function closeAuthModal() {
@@ -342,6 +406,7 @@ function closeAuthModal() {
   modal.setAttribute("aria-hidden", "true");
   document.querySelector("#auth-error").hidden = true;
   document.querySelector("#auth-form").reset();
+  releaseModal();
 }
 
 function setAuthMode(mode) {
@@ -434,6 +499,7 @@ function openResetModal(token) {
   modal.dataset.token = token || "";
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
+  trapModal(modal, closeResetModal);
 }
 
 function closeResetModal() {
@@ -445,6 +511,7 @@ function closeResetModal() {
   document.querySelector("#reset-form").reset();
   // Drop the token from the URL so it isn't re-triggered or left in history.
   if (location.pathname === "/reset-password") history.replaceState(null, "", "/");
+  releaseModal();
 }
 
 async function submitResetPassword(form) {
@@ -646,12 +713,14 @@ function openLegalModal(tab = "privacy") {
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
   setLegalTab(tab);
+  trapModal(modal, closeLegalModal);
 }
 
 function closeLegalModal() {
   const modal = document.querySelector("#legal-modal");
   modal.hidden = true;
   modal.setAttribute("aria-hidden", "true");
+  releaseModal();
 }
 
 function setLegalTab(tab) {
@@ -766,12 +835,14 @@ function openDeleteAccountModal() {
   document.querySelector("#delete-password-input").value = "";
   document.querySelector("#delete-submit").disabled = true;
   document.querySelector("#delete-error").hidden = true;
+  trapModal(modal, closeDeleteAccountModal);
 }
 
 function closeDeleteAccountModal() {
   const modal = document.querySelector("#delete-modal");
   modal.hidden = true;
   modal.setAttribute("aria-hidden", "true");
+  releaseModal();
 }
 
 function updateDeleteSubmitState() {
@@ -921,6 +992,7 @@ function openConnectionWizard(name) {
   setWizardStep("preflight");
   renderProviderSwitcher();
   loadWizardDetail();
+  trapModal(modal, closeConnectionWizard);
 }
 
 function closeConnectionWizard() {
@@ -929,6 +1001,7 @@ function closeConnectionWizard() {
   modal.setAttribute("aria-hidden", "true");
   stopOAuthPolling();
   wizard.provider = null;
+  releaseModal();
 }
 
 function renderPreflight(detail) {
@@ -1363,9 +1436,21 @@ async function pollJob(jobId, { timeoutMs = 180000, intervalMs = 1500 } = {}) {
   throw new Error("Timed out waiting for the job to finish.");
 }
 
+let scanInProgress = false;
+
 async function runScan() {
+  // Re-entrancy guard: ignore a second click while a scan is running, so we
+  // never start two overlapping jobs (and leak the first stepper timer).
+  if (scanInProgress) return;
   const sourceUrl = document.querySelector("#source-url").value.trim();
+  if (!sourceUrl) {
+    showToast("Enter a repository URL (https://github.com/owner/repo) to scan.");
+    return;
+  }
   const scanDepth = document.querySelector("#scan-depth").value;
+  scanInProgress = true;
+  const scanButton = document.querySelector("#run-scan");
+  if (scanButton) scanButton.disabled = true;
   scanState.textContent = "Running";
   showToast("Full infrastructure scan started.");
 
@@ -1382,19 +1467,20 @@ async function runScan() {
       body: JSON.stringify({ sourceUrl, scanDepth, connectors: state.connectors })
     });
     const report = await pollJob(enqueued.jobId);
-    window.clearInterval(timer);
-    document.body.classList.remove("scan-active");
     state.activeReport = report;
     audit(`Scan completed for ${report.sourceUrl}`);
     saveState();
     renderAll();
     showToast("Report ready. Review and approve repairs.");
   } catch (error) {
-    window.clearInterval(timer);
-    document.body.classList.remove("scan-active");
     scanState.textContent = "Scan failed";
     audit(`Scan failed: ${error.message}`);
     showToast(error.message || "Scan failed. Connect a provider and retry.");
+  } finally {
+    window.clearInterval(timer);
+    document.body.classList.remove("scan-active");
+    scanInProgress = false;
+    if (scanButton) scanButton.disabled = false;
   }
 }
 
@@ -1522,7 +1608,9 @@ document.addEventListener("click", (event) => {
   if (target.dataset.filter) {
     activeFilter = target.dataset.filter;
     document.querySelectorAll(".segmented button").forEach((button) => {
-      button.classList.toggle("selected", button === target);
+      const selected = button === target;
+      button.classList.toggle("selected", selected);
+      button.setAttribute("aria-pressed", selected ? "true" : "false");
     });
     renderFindings();
   }

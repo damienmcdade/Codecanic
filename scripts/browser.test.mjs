@@ -101,7 +101,11 @@ try {
     await page.waitForFunction(() => /Report ready/i.test(document.querySelector("#scan-state")?.textContent || ""), { timeout: 60000 });
     ok("scan polled to completion and report rendered", /Report ready/i.test(await page.$eval("#scan-state", (e) => e.textContent)));
   } catch (err) {
-    console.log(`  ⊘ SKIP scan-in-browser — ${String(err.message).slice(0, 80)}`);
+    if (process.env.CODECANIC_REQUIRE_NETWORK_TESTS === "1") {
+      ok("scan polled to completion and report rendered (strict mode)", false, String(err.message).slice(0, 80));
+    } else {
+      console.log(`  ⊘ SKIP scan-in-browser — ${String(err.message).slice(0, 80)} (set CODECANIC_REQUIRE_NETWORK_TESTS=1 to enforce)`);
+    }
   }
 
   console.log("\nForgot password");
@@ -111,8 +115,20 @@ try {
   await page.waitForFunction(() => !document.querySelector("#auth-modal").hidden, { timeout: 8000 });
   await setVal('#auth-form input[name="email"]', email);
   await clickEl("#forgot-password");
-  await page.waitForFunction(() => document.querySelector("#toast")?.classList.contains("visible"), { timeout: 8000 });
-  ok("forgot-password shows a confirmation toast", /reset link/i.test(await page.$eval("#toast", (e) => e.textContent)));
+  // Wait for the toast to actually carry the reset message — not merely be
+  // visible — so a still-visible prior toast (e.g. "Signed out.") can't satisfy
+  // the wait before requestPasswordReset's async toast lands.
+  const toastShown = await page
+    .waitForFunction(
+      () => {
+        const t = document.querySelector("#toast");
+        return t?.classList.contains("visible") && /reset link/i.test(t.textContent) ? true : false;
+      },
+      { timeout: 8000 }
+    )
+    .then(() => true)
+    .catch(() => false);
+  ok("forgot-password shows a confirmation toast", toastShown);
   await sleep(600);
   ok("request-password-reset returned a dev reset token", !!resetToken, "no reset token captured");
 

@@ -1,6 +1,7 @@
 import { randomUUID, randomBytes, createHash } from "node:crypto";
-import { json, readBody } from "./_lib.js";
+import { json, readBody, appBaseUrl } from "./_lib.js";
 import * as repo from "./_repo.js";
+import { logger } from "./_log.js";
 import { sendVerificationEmail, sendPasswordResetEmail, emailConfigured } from "./_email.js";
 import {
   buildSessionCookie,
@@ -50,15 +51,6 @@ function emailVerificationRequired() {
   return emailConfigured() || process.env.CODECANIC_REQUIRE_EMAIL_VERIFICATION === "1";
 }
 
-function baseUrl(req) {
-  if (process.env.CODECANIC_APP_URL) return process.env.CODECANIC_APP_URL.replace(/\/$/, "");
-  // Don't trust the Host header for password-reset/verification links in prod —
-  // a forged Host would point token links at an attacker domain.
-  if (isProductionLike()) return "https://codecanic.app";
-  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
-  return `${proto}://${req.headers.host || "localhost"}`;
-}
-
 const hashToken = (raw) => createHash("sha256").update(raw).digest("hex");
 const newToken = () => randomBytes(32).toString("base64url");
 
@@ -77,8 +69,8 @@ async function issueVerification(user, req) {
     userId: user.id, kind: "email_verify", tokenHash: hashToken(raw),
     expiresAt: new Date(Date.now() + VERIFY_TTL_MS).toISOString()
   });
-  const link = `${baseUrl(req)}/api/auth/verify-email?token=${raw}`;
-  try { await sendVerificationEmail(user.email, link); } catch (err) { console.error("[verify email]", err.message); }
+  const link = `${appBaseUrl(req)}/api/auth/verify-email?token=${raw}`;
+  try { await sendVerificationEmail(user.email, link); } catch (err) { logger.error("auth.verify_email_send_failed", { err }); }
   // Only exposed in non-production so the flow is testable without a provider.
   return isProductionLike() ? undefined : raw;
 }
@@ -183,7 +175,7 @@ async function login(req, res) {
 
   // Transparently upgrade legacy/low-cost password hashes on successful login.
   if (passwordNeedsUpgrade(user.passwordHash)) {
-    try { await repo.updateUserPassword(user.id, await hashPassword(password)); } catch (err) { console.error("[rehash]", err.message); }
+    try { await repo.updateUserPassword(user.id, await hashPassword(password)); } catch (err) { logger.error("auth.rehash_failed", { err }); }
   }
 
   const organizations = (await repo.organizationsForUser(user.id)).map(publicOrganization);
@@ -356,8 +348,8 @@ async function requestPasswordReset(req, res) {
       userId: user.id, kind: "password_reset", tokenHash: hashToken(raw),
       expiresAt: new Date(Date.now() + RESET_TTL_MS).toISOString()
     });
-    const link = `${baseUrl(req)}/reset-password?token=${raw}`;
-    try { await sendPasswordResetEmail(user.email, link); } catch (err) { console.error("[reset email]", err.message); }
+    const link = `${appBaseUrl(req)}/reset-password?token=${raw}`;
+    try { await sendPasswordResetEmail(user.email, link); } catch (err) { logger.error("auth.reset_email_send_failed", { err }); }
     if (!isProductionLike()) devToken = raw;
   }
   // Always generic to prevent account enumeration.
@@ -403,12 +395,11 @@ export default async function handler(req, res) {
     if (action === "export" && req.method === "GET") return await exportData(req, res);
     json(res, 404, { error: "Unknown auth action" });
   } catch (error) {
-    console.error("[auth error]", error);
-    const isClientError = /^(Request body|Provider|Apple|Railway|Password|Email|Enter|At least|Sign in|Type "DELETE"|Re-enter|You|CODECANIC_SESSION_SECRET)/.test(
-      error?.message || ""
-    );
-    json(res, isClientError ? 400 : 500, {
-      error: isClientError ? error.message : "Request failed."
-    });
+    // Exposed client errors (ClientError / tagged statusCode) carry a safe
+    // message + 4xx; anything else is an unexpected server error → 500 + generic.
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("auth.handler_error", { action, err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }
