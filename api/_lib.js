@@ -95,9 +95,11 @@ export function orgFromRequest(req, context, url) {
   const u = url || requestUrl(req);
   const requested = req.headers["x-codecanic-org"] || u.searchParams.get("organization") || null;
   const orgs = context.organizations || [];
-  let organization = null;
-  if (requested) organization = orgs.find((o) => o.slug === requested || o.id === requested) || null;
-  return organization || orgs[0] || null;
+  // An explicitly-requested org that doesn't match is an error (returns null →
+  // the caller's 400), NOT a silent fall-through to the first org. Only default
+  // to the first org when nothing was requested.
+  if (requested) return orgs.find((o) => o.slug === requested || o.id === requested) || null;
+  return orgs[0] || null;
 }
 
 export async function resolveOrgContext(req) {

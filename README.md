@@ -25,7 +25,19 @@ The production version should separate the interface from trusted backend worker
 ## Local Run
 
 ```bash
-npm run dev
+npm run build   # emit public/ (static assets + PWA) once
+npm run dev     # start the server (a dev session secret is used automatically)
+```
+
+## Tests
+
+```bash
+npm test                                  # full suite (offline-tolerant)
+CODECANIC_REQUIRE_NETWORK_TESTS=1 npm test   # CI w/ network: turns the OSV /
+                                          # real-clone / scan skips into HARD
+                                          # failures so a green run can't hide a
+                                          # broken core feature
+npm run test:browser                      # Puppeteer UI test (installs puppeteer)
 ```
 
 ## Operating Endpoints
@@ -122,7 +134,7 @@ Proven by `npm run test:queue` (enqueue, claim-exactly-once, complete/fail, org 
 - Vercel: static web deployment is ready through `vercel.json`.
 - Railway: `railway.json` is included for hosting the current static MVP or future API/worker services.
 - GitHub: initialize a repo and push once GitHub authentication is active.
-- iOS/Android: Capacitor shells are integrated (`capacitor.config.json`, `android/`, `ios/`). They load the live `https://codecanic.app` site in a native WebView; build a signed Android AAB/APK with `npx cap sync android && (cd android && ./gradlew bundleRelease)`. See [MOBILE_DEPLOY.md](MOBILE_DEPLOY.md).
+- iOS/Android: native WebView shells load the live `https://codecanic.app` site. **Android** is a Capacitor shell (`capacitor.config.json`, `android/`) — build a signed AAB/APK with `npx cap sync android && (cd android && ./gradlew bundleRelease)`. **iOS** is a native SwiftUI/WKWebView app (`ios/`, not Capacitor). See [MOBILE_DEPLOY.md](MOBILE_DEPLOY.md).
 
 ## Next Build Steps
 
@@ -134,4 +146,4 @@ Proven by `npm run test:queue` (enqueue, claim-exactly-once, complete/fail, org 
 6. ~~Auth hardening.~~ ✓ Email verification, password reset, raised scrypt cost (with transparent upgrade), and DB-backed login lockout. Pluggable email via Resend (`api/_email.js`).
 7. ~~Observability + frontend auth pages.~~ ✓ Structured JSON logging with request ids, Sentry error tracking (`api/_log.js`, `api/_observability.js`), and the verify-banner / forgot-password / reset-password UI.
 8. ~~Async scan/repair job queues.~~ ✓ DB-backed queue + in-process worker (`api/_worker.js`, `api/_jobs.js`); endpoints return `202` + `jobId`, the UI polls `/api/jobs/<id>`.
-9. ~~Add mobile packaging with Capacitor for iOS and Android.~~ ✓ Capacitor iOS + Android WebView shells point at `https://codecanic.app`; signed Android AAB/APK build documented in [MOBILE_DEPLOY.md](MOBILE_DEPLOY.md).
+9. ~~Add mobile packaging for iOS and Android.~~ ✓ Native WebView shells point at `https://codecanic.app` — Android via Capacitor, iOS via SwiftUI/WKWebView; signed Android AAB/APK build documented in [MOBILE_DEPLOY.md](MOBILE_DEPLOY.md).

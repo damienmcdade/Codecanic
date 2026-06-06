@@ -209,7 +209,8 @@ async function callback(req, res) {
         403,
         renderHtml("Access denied", "You no longer have access to that organization.", {
           provider,
-          success: false
+          success: false,
+          nonce: req.cspNonce
         })
       );
       return;

@@ -332,13 +332,13 @@ async function refreshSession() {
 }
 
 // --- Modal accessibility: focus trap, Escape-to-close, focus restore ---------
-// One open modal at a time. trapModal/releaseModal are called by each modal's
-// open/close fn; a single global keydown traps Tab + handles Escape, and a
-// backdrop click closes. This gives every dialog WCAG-conformant keyboard UX
-// without per-modal wiring.
-let lastFocusedBeforeModal = null;
-let activeModal = null;
-let activeModalClose = null;
+// A STACK of open modals (the auth modal's Terms/Privacy buttons open the legal
+// modal on top of it, so single-scalar state would corrupt the trap). Each
+// modal's open/close fn calls trapModal/releaseModal; the global keydown always
+// targets the top-of-stack modal, and a backdrop click closes it. Re-opening the
+// modal that's already on top (e.g. the connect wizard re-rendering on provider
+// switch) refreshes focus without stacking a duplicate.
+const modalStack = []; // [{ modal, closeFn, lastFocused }]
 
 function modalFocusables(container) {
   return [...container.querySelectorAll(
@@ -346,34 +346,49 @@ function modalFocusables(container) {
   )].filter((el) => !el.hidden && el.offsetParent !== null);
 }
 
-function trapModal(modal, closeFn) {
-  lastFocusedBeforeModal = document.activeElement;
-  activeModal = modal;
-  activeModalClose = closeFn;
-  modal.setAttribute("aria-modal", "true");
+function focusInto(modal) {
   const focusable = modalFocusables(modal);
   (focusable[0] || modal).focus();
 }
 
-function releaseModal() {
-  if (activeModal) activeModal.removeAttribute("aria-modal");
-  activeModal = null;
-  activeModalClose = null;
-  if (lastFocusedBeforeModal && typeof lastFocusedBeforeModal.focus === "function") {
-    lastFocusedBeforeModal.focus();
+function trapModal(modal, closeFn) {
+  const top = modalStack[modalStack.length - 1];
+  if (top && top.modal === modal) {
+    // Re-entrant open of the same modal — keep the existing entry (and its saved
+    // focus) instead of stacking a duplicate; just refresh focus.
+    focusInto(modal);
+    return;
   }
-  lastFocusedBeforeModal = null;
+  modalStack.push({ modal, closeFn, lastFocused: document.activeElement });
+  modal.setAttribute("aria-modal", "true");
+  // Ensure a stacked modal paints above its parent (equal base z-index + DOM
+  // order would otherwise render a nested modal behind the one that opened it).
+  modal.style.zIndex = String(90 + modalStack.length * 10);
+  focusInto(modal);
+}
+
+function releaseModal() {
+  const entry = modalStack.pop();
+  if (entry) {
+    entry.modal.removeAttribute("aria-modal");
+    entry.modal.style.zIndex = "";
+    if (entry.lastFocused && typeof entry.lastFocused.focus === "function") entry.lastFocused.focus();
+  }
+  // If a parent modal is still open beneath this one, return focus into it.
+  const parent = modalStack[modalStack.length - 1];
+  if (parent) focusInto(parent.modal);
 }
 
 document.addEventListener("keydown", (event) => {
-  if (!activeModal) return;
+  const entry = modalStack[modalStack.length - 1];
+  if (!entry) return;
   if (event.key === "Escape") {
     event.preventDefault();
-    activeModalClose?.();
+    entry.closeFn?.();
     return;
   }
   if (event.key === "Tab") {
-    const focusable = modalFocusables(activeModal);
+    const focusable = modalFocusables(entry.modal);
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
@@ -387,9 +402,10 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-// Click on the backdrop (the overlay element itself, not its children) closes.
+// Click on the backdrop (the top modal's overlay itself, not its children) closes.
 document.addEventListener("mousedown", (event) => {
-  if (activeModal && event.target === activeModal) activeModalClose?.();
+  const entry = modalStack[modalStack.length - 1];
+  if (entry && event.target === entry.modal) entry.closeFn?.();
 });
 
 function openAuthModal(mode = "signin") {
