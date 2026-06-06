@@ -6,6 +6,7 @@
   "description": "Codecanic MVP: scan infrastructure, review reports, and approve code repairs.",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "start": "node server.js",
     "dev": "node server.js",
     "check": "node scripts/check.mjs",
@@ -38,7 +39,8 @@
   "devDependencies": {
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
-    "@capacitor/core": "^8.3.4"
+    "@capacitor/core": "^8.3.4",
+    "sharp": "^0.34.5"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.6",

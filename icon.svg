@@ -1,5 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Codecanic logo">
-  <rect width="512" height="512" rx="96" fill="#111827"/>
-  <path d="M354 164c-28-28-61-42-99-42-40 0-73 13-99 40s-39 59-39 98 13 72 39 98 59 40 99 40c38 0 71-14 99-42l-47-50c-14 15-31 23-52 23-20 0-37-7-50-20-13-14-20-30-20-49s7-35 20-49c13-13 30-20 50-20 21 0 38 8 52 23l47-50Z" fill="#ffffff"/>
-  <path d="M356 260c0 57-46 103-103 103" fill="none" stroke="#14b8a6" stroke-width="26" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="64" y1="24" x2="448" y2="488" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B1220"/>
+      <stop offset="0.52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="126" y1="92" x2="404" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67E8F9"/>
+      <stop offset="0.5" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#0F766E"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="136" y1="144" x2="390" y2="382" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.08 0 0 0 0 0.72 0 0 0 0 0.65 0 0 0 0.75 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <path d="M74 378h364" stroke="#172554" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+  <path d="M96 142h320M96 256h320M96 370h320M142 96v320M256 96v320M370 96v320" stroke="#1E293B" stroke-width="4" opacity="0.55"/>
+  <circle cx="386" cy="118" r="44" fill="#0F172A" stroke="#334155" stroke-width="6"/>
+  <path d="M372 118l14 14 28-32" fill="none" stroke="#34D399" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M347 166c-29-30-64-45-105-45-43 0-79 14-107 43-29 29-43 64-43 106 0 43 14 78 43 107 28 29 64 43 107 43 41 0 76-15 105-45l-45-48c-16 16-35 24-58 24-22 0-41-8-56-23-15-16-23-35-23-58s8-42 23-58c15-15 34-23 56-23 23 0 42 8 58 24l45-47Z" fill="#F8FAFC"/>
+  <path d="M349 270c0 58-47 105-105 105" fill="none" stroke="url(#teal)" stroke-width="30" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M291 154l-44 92h64l-90 140 26-104h-62l54-128h52Z" fill="url(#spark)"/>
+  <path d="M126 438h260" stroke="#14B8A6" stroke-width="10" stroke-linecap="round" opacity="0.8"/>
+  <circle cx="116" cy="438" r="8" fill="#67E8F9"/>
+  <circle cx="402" cy="438" r="8" fill="#F97316"/>
 </svg>

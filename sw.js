@@ -4,7 +4,17 @@
 // of lingering until a manual version bump.
 const BUILD_ID = "__BUILD_ID__";
 const CACHE_NAME = `codecanic-${BUILD_ID}`;
-const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
+const ASSETS = [
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./manifest.webmanifest",
+  "./icon.svg",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./icon-1024.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));

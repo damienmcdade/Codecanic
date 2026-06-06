@@ -1,7 +1,17 @@
 import { cp, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 
-const staticFiles = ["index.html", "styles.css", "app.js", "manifest.webmanifest", "sw.js", "icon.svg"];
+const staticFiles = [
+  "index.html",
+  "styles.css",
+  "app.js",
+  "manifest.webmanifest",
+  "sw.js",
+  "icon.svg",
+  "icon-192.png",
+  "icon-512.png",
+  "icon-1024.png",
+];
 
 await rm("public", { recursive: true, force: true });
 await mkdir("public", { recursive: true });
