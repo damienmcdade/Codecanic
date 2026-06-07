@@ -1984,3 +1984,20 @@ code {
   color: var(--muted, #94a3b8);
 }
 body.is-pro .ad-slot { display: none; }
+
+/* Public editorial content sections (How it works / What we scan / FAQ).
+   Crawlable prose shown to every visitor without sign-in. */
+.content-panel { line-height: 1.6; }
+.content-panel h2 { margin: 4px 0 10px; }
+.content-panel p { color: var(--muted, #cbd5e1); max-width: 70ch; }
+.content-panel h3 { margin: 0 0 4px; font-size: 0.98rem; }
+.how-steps { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 14px; }
+.how-steps > li { padding: 14px 16px; border: 1px solid rgba(148,163,184,0.18); border-radius: 12px; background: rgba(15,23,42,0.35); }
+.scan-coverage { margin: 14px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+.scan-coverage li { color: var(--muted, #cbd5e1); }
+.scan-coverage strong { color: inherit; }
+.faq-list { margin-top: 14px; display: grid; gap: 8px; }
+.faq-list details { padding: 10px 14px; border: 1px solid rgba(148,163,184,0.18); border-radius: 10px; background: rgba(15,23,42,0.35); }
+.faq-list summary { cursor: pointer; font-weight: 600; }
+.faq-list details p { margin: 8px 0 0; }
+.content-foot { margin-top: 18px; font-size: 0.85rem; }

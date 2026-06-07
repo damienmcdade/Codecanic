@@ -35,6 +35,8 @@
           <a href="#connectors">Connectors</a>
           <a href="#scan">Scan</a>
           <a href="#repairs">Repairs</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#faq">FAQ</a>
         </nav>
         <div class="tier-card">
           <span class="label">Plan</span>
@@ -275,6 +277,98 @@
             <span>Railway Workers</span>
             <span>Xcode Projects</span>
           </div>
+        </section>
+
+        <!-- Public, crawlable editorial content. Visible to every visitor
+             (no sign-in required) so search engines and the AdSense review
+             crawler see substantial original prose describing what the
+             product does, how it works, and what it scans for. -->
+        <section class="panel content-panel" id="how-it-works" aria-label="How Codecanic works">
+          <p class="eyebrow">How it works</p>
+          <h2>From repository to reviewed repair in three steps</h2>
+          <p>
+            Codecanic is a free, sponsor-supported code-operations tool that connects to the
+            platforms you already use — GitHub, GitLab, Bitbucket, Vercel, Railway, and Xcode
+            projects — and turns a sprawling codebase into a prioritized, human-readable repair
+            plan. Instead of stitching together half a dozen linters, scanners, and dashboards,
+            you connect a source once and Codecanic handles intake, diagnosis, and the repair lift
+            in a single workflow.
+          </p>
+          <ol class="how-steps">
+            <li>
+              <h3>1. Intake</h3>
+              <p>
+                Authorize a connector and pick a repository or project. Codecanic clones the code
+                in an isolated worker, reads your dependency manifests, lockfiles, CI configuration,
+                and infrastructure-as-code, and assembles a complete picture of the stack before a
+                single check runs.
+              </p>
+            </li>
+            <li>
+              <h3>2. Diagnostics</h3>
+              <p>
+                The scan engine runs software-composition analysis against known-vulnerability
+                databases, static analysis for code-quality and security defects, secret detection
+                across the git history, and supply-chain checks on your third-party packages. Every
+                finding is scored by severity and tagged as critical, security, performance, or
+                autofixable.
+              </p>
+            </li>
+            <li>
+              <h3>3. Repair lift</h3>
+              <p>
+                Review the findings report, approve all fixes or only the segments you trust, and
+                Codecanic opens real pull requests with the changes — leaving a full audit trail of
+                what was scanned, what was approved, and who approved it. You stay in control; nothing
+                is merged without a human sign-off.
+              </p>
+            </li>
+          </ol>
+        </section>
+
+        <section class="panel content-panel" id="what-we-scan" aria-label="What Codecanic detects">
+          <p class="eyebrow">What it detects</p>
+          <h2>Security, quality, performance, and supply-chain risk</h2>
+          <ul class="scan-coverage">
+            <li><strong>Vulnerable dependencies</strong> — direct and transitive packages with published CVEs, matched against the OSV database, with the safe upgrade path where one exists.</li>
+            <li><strong>Leaked secrets</strong> — API keys, tokens, and credentials committed anywhere in the repository's git history, not just the current checkout.</li>
+            <li><strong>Static-analysis defects</strong> — common security and correctness bugs surfaced by language-aware analysis, ranked so the critical issues rise to the top.</li>
+            <li><strong>Supply-chain weak points</strong> — unpinned dependencies, risky install scripts, and abandoned packages that quietly expand your attack surface.</li>
+            <li><strong>Deployment and configuration drift</strong> — misconfigurations across your connected hosting and CI platforms that tend to cause outages and regressions.</li>
+          </ul>
+        </section>
+
+        <section class="panel content-panel" id="faq" aria-label="Frequently asked questions">
+          <p class="eyebrow">FAQ</p>
+          <h2>Common questions</h2>
+          <div class="faq-list">
+            <details>
+              <summary>Is Codecanic really free?</summary>
+              <p>Yes. Codecanic is free for every team and supported by unobtrusive sponsor placements. There is no paid tier required to scan a repository or open repair pull requests.</p>
+            </details>
+            <details>
+              <summary>Does Codecanic change my code automatically?</summary>
+              <p>No. Codecanic only proposes changes as pull requests after you explicitly approve them. Nothing is merged into your codebase without a human review and sign-off.</p>
+            </details>
+            <details>
+              <summary>What access does Codecanic need?</summary>
+              <p>Codecanic uses the standard OAuth or token flow for each provider and requests only the scopes needed to read your code and open pull requests. You can disconnect any connector at any time, which revokes the stored credential.</p>
+            </details>
+            <details>
+              <summary>Where is my code processed?</summary>
+              <p>Repositories are cloned into isolated, ephemeral workers for the duration of a scan and are not retained afterward. See the <button type="button" class="link-button" data-open-legal="privacy">Privacy Policy</button> for the full detail on data handling and retention.</p>
+            </details>
+            <details>
+              <summary>How do I get started?</summary>
+              <p>Create a free account, connect a source above, and run your first scan. The whole flow — from connecting a provider to reviewing your first findings report — takes a few minutes.</p>
+            </details>
+          </div>
+          <p class="content-foot muted">
+            Codecanic is operated as a free, sponsor-supported service. Read our
+            <button type="button" class="link-button" data-open-legal="privacy">Privacy Policy</button> and
+            <button type="button" class="link-button" data-open-legal="terms">Terms of Service</button>, or
+            email <a href="mailto:hello@codecanic.app">hello@codecanic.app</a> with any questions.
+          </p>
         </section>
       </main>
     </div>

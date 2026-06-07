@@ -11,6 +11,12 @@ const staticFiles = [
   "icon-192.png",
   "icon-512.png",
   "icon-1024.png",
+  // SEO + AdSense static files served at the web root. ads.txt authorizes the
+  // Google publisher ID (fixes the AdSense "ads.txt not found" status); robots
+  // and sitemap make the public content crawlable for review.
+  "ads.txt",
+  "robots.txt",
+  "sitemap.xml",
 ];
 
 await rm("public", { recursive: true, force: true });
