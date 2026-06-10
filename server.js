@@ -107,10 +107,10 @@ function buildCsp(nonce) {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' ${AD_SCRIPT_HOSTS}`,
-    "style-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     `img-src 'self' data: ${AD_IMG_HOSTS}`,
     `connect-src 'self' ${AD_CONNECT_HOSTS}`,
-    "font-src 'self'",
+    "font-src 'self' https://fonts.gstatic.com",
     `frame-src ${AD_FRAME_HOSTS}`,
     "object-src 'none'",
     "base-uri 'self'",

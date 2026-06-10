@@ -1,40 +1,139 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" role="img" aria-label="Cyber garage diagnostic machine">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" role="img" aria-label="Cyber garage diagnostics bay: a code-engine on a lift under a sweeping scanner, with a live diagnostic gauge cluster and terminal readout">
   <defs>
-    <linearGradient id="metal" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#1f2937"/>
-      <stop offset=".48" stop-color="#0f172a"/>
-      <stop offset="1" stop-color="#334155"/>
+    <linearGradient id="steel" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#1c2531"/>
+      <stop offset="1" stop-color="#0a0e13"/>
     </linearGradient>
-    <linearGradient id="glow" x1="0" x2="1">
-      <stop offset="0" stop-color="#06b6d4"/>
-      <stop offset=".55" stop-color="#14b8a6"/>
-      <stop offset="1" stop-color="#f97316"/>
+    <linearGradient id="block" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#222c3a"/>
+      <stop offset=".5" stop-color="#141a23"/>
+      <stop offset="1" stop-color="#2b3645"/>
     </linearGradient>
-    <filter id="softGlow">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <linearGradient id="beam" x1="0" x2="1">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#22d3ee" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="vignette" cx="50%" cy="38%" r="75%">
+      <stop offset="0" stop-color="#0b1119" stop-opacity="0"/>
+      <stop offset="1" stop-color="#04060a" stop-opacity=".9"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#2a3340" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <pattern id="hazard" width="34" height="34" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="17" height="34" fill="#f5b81d"/>
+      <rect x="17" width="17" height="34" fill="#0b0e13"/>
+    </pattern>
+    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>
+      .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+      .spark { animation: spark 1.4s ease-out infinite; }
+      .spark2 { animation: spark 1.4s ease-out .7s infinite; }
+      @keyframes spark { 0%{opacity:0;transform:translateY(0)} 12%{opacity:1} 100%{opacity:0;transform:translateY(-16px)} }
+      .crawl { stroke-dasharray: 8 10; animation: crawl 1.6s linear infinite; }
+      @keyframes crawl { to { stroke-dashoffset: -36; } }
+    </style>
   </defs>
-  <rect width="900" height="620" fill="#0b1018"/>
-  <path d="M70 492h760l-42 70H112L70 492Z" fill="#151f2e"/>
-  <path d="M124 146h652v346H124z" fill="#0f172a" stroke="#334155" stroke-width="4"/>
-  <path d="M150 175h244v94H150zM506 175h244v94H506z" fill="#111827" stroke="#475569" stroke-width="3"/>
-  <path d="M185 209h174M542 209h174M185 236h128M542 236h98" stroke="#14b8a6" stroke-width="8" stroke-linecap="round" opacity=".85"/>
-  <path d="M254 373c0-64 52-116 116-116h160c64 0 116 52 116 116v119H254V373Z" fill="url(#metal)" stroke="#64748b" stroke-width="5"/>
-  <path d="M316 385c0-42 34-76 76-76h116c42 0 76 34 76 76v47H316v-47Z" fill="#020617" stroke="#14b8a6" stroke-width="5"/>
-  <path d="M338 417h224" stroke="url(#glow)" stroke-width="12" stroke-linecap="round" filter="url(#softGlow)"/>
-  <circle cx="270" cy="370" r="42" fill="#111827" stroke="#f97316" stroke-width="8"/>
-  <circle cx="630" cy="370" r="42" fill="#111827" stroke="#06b6d4" stroke-width="8"/>
-  <path d="M450 84v168M450 84l-90 70M450 84l90 70" stroke="#64748b" stroke-width="10" stroke-linecap="round"/>
-  <rect x="406" y="230" width="88" height="58" rx="12" fill="#0f172a" stroke="#14b8a6" stroke-width="5"/>
-  <path d="M450 288v64" stroke="#f97316" stroke-width="9" stroke-linecap="round" filter="url(#softGlow)"/>
-  <path d="M116 514h668" stroke="#475569" stroke-width="4" stroke-dasharray="18 16"/>
-  <path d="M168 540h118M612 540h118" stroke="#14b8a6" stroke-width="8" stroke-linecap="round"/>
-  <g opacity=".35">
-    <path d="M92 94h74v74H92zM734 94h74v74h-74z" fill="none" stroke="#64748b" stroke-width="4"/>
-    <path d="M112 130h34M754 130h34" stroke="#f97316" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- bay shell -->
+  <rect width="900" height="620" fill="url(#steel)"/>
+  <rect width="900" height="620" fill="url(#grid)"/>
+
+  <!-- floor + hazard apron -->
+  <path d="M0 520 L900 520 L900 620 L0 620Z" fill="#0c1118"/>
+  <path d="M120 538 L780 538 L840 600 L60 600Z" fill="#10161e" stroke="#2a3340" stroke-width="2"/>
+  <rect x="60" y="600" width="780" height="14" fill="url(#hazard)" opacity=".85"/>
+  <path d="M300 538 L260 600 M450 538 L450 600 M600 538 L640 600" stroke="#22d3ee" stroke-width="2" opacity=".25"/>
+
+  <!-- two-post lift -->
+  <rect x="138" y="120" width="22" height="400" fill="#161d27" stroke="#2a3340" stroke-width="2"/>
+  <rect x="740" y="120" width="22" height="400" fill="#161d27" stroke="#2a3340" stroke-width="2"/>
+  <rect x="138" y="118" width="624" height="16" rx="4" fill="#1b2430" stroke="#2a3340" stroke-width="2"/>
+  <rect x="160" y="430" width="120" height="12" fill="#1b2430" stroke="#2a3340" stroke-width="2"/>
+  <rect x="620" y="430" width="120" height="12" fill="#1b2430" stroke="#2a3340" stroke-width="2"/>
+
+  <!-- scanner gantry beam (sweeps across the engine) -->
+  <g>
+    <rect x="-40" y="120" width="80" height="320" fill="url(#beam)" filter="url(#glow)">
+      <animateTransform attributeName="transform" type="translate" from="200 0" to="640 0" dur="4.6s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="-2" y="120" width="3" height="320" fill="#22d3ee" opacity=".8">
+      <animateTransform attributeName="transform" type="translate" from="240 0" to="600 0" dur="4.6s" repeatCount="indefinite"/>
+    </rect>
   </g>
+
+  <!-- the code-engine block on the lift -->
+  <g>
+    <rect x="300" y="250" width="300" height="180" rx="14" fill="url(#block)" stroke="#3a4655" stroke-width="3"/>
+    <g fill="#9fb0c4"><circle cx="318" cy="268" r="4"/><circle cx="582" cy="268" r="4"/><circle cx="318" cy="412" r="4"/><circle cx="582" cy="412" r="4"/></g>
+    <g stroke="#2a3340" stroke-width="3"><path d="M330 300h240M330 320h240M330 340h240"/></g>
+    <path d="M330 372h240" stroke="#ff4d1f" stroke-width="6" stroke-linecap="round" filter="url(#glow)">
+      <animate attributeName="opacity" values="1;.5;1" dur="1.3s" repeatCount="indefinite"/>
+    </path>
+    <text x="450" y="298" text-anchor="middle" class="mono" font-size="34" font-weight="700" fill="#22d3ee" opacity=".9">&lt;/&gt;</text>
+    <path d="M600 300 C 660 300 660 280 700 280" fill="none" stroke="#22d3ee" stroke-width="3" class="crawl"/>
+    <path d="M600 360 C 650 360 660 400 690 410" fill="none" stroke="#34d399" stroke-width="3" class="crawl"/>
+    <g transform="translate(596 372)" fill="#f5b81d">
+      <rect class="spark" x="0" y="0" width="2" height="9"/>
+      <rect class="spark2" x="8" y="0" width="2" height="9"/>
+      <rect class="spark" x="-7" y="0" width="2" height="9"/>
+    </g>
+  </g>
+
+  <!-- diagnostic gauge cluster (tachometer with live needle) -->
+  <g transform="translate(712 300)">
+    <circle r="78" fill="#0a0e13" stroke="#2a3340" stroke-width="4"/>
+    <circle r="78" fill="none" stroke="#22d3ee" stroke-width="2" opacity=".3"/>
+    <path d="M55 -55 A78 78 0 0 1 78 0" fill="none" stroke="#ef4444" stroke-width="6"/>
+    <path d="M21 -75 A78 78 0 0 1 55 -55" fill="none" stroke="#f5b81d" stroke-width="6"/>
+    <g stroke="#5b6b80" stroke-width="2">
+      <path d="M0 -78v12M55 -55l8 8M78 0h-12M-55 -55l-8 8M-78 0h12"/>
+    </g>
+    <text y="40" text-anchor="middle" class="mono" font-size="11" fill="#8c99ab">DIAG RPM</text>
+    <g>
+      <path d="M0 6 L0 -62 L4 0Z" fill="#ff4d1f"/>
+      <circle r="7" fill="#1b2430" stroke="#5b6b80" stroke-width="2"/>
+      <animateTransform attributeName="transform" type="rotate" values="-120; 95; -40; 60; -120" dur="5.2s" repeatCount="indefinite" calcMode="spline" keyTimes="0;.3;.55;.8;1" keySplines=".4 0 .2 1;.4 0 .2 1;.4 0 .2 1;.4 0 .2 1"/>
+    </g>
+  </g>
+  <g transform="translate(712 432)">
+    <circle r="34" fill="#0a0e13" stroke="#2a3340" stroke-width="3"/>
+    <path d="M0 4 L0 -26" stroke="#34d399" stroke-width="3" stroke-linecap="round">
+      <animateTransform attributeName="transform" type="rotate" values="-40;50;-40" dur="3.4s" repeatCount="indefinite"/>
+    </path>
+    <circle r="4" fill="#1b2430" stroke="#5b6b80" stroke-width="1.5"/>
+  </g>
+
+  <!-- terminal monitor -->
+  <g transform="translate(96 150)">
+    <rect width="208" height="126" rx="8" fill="#05080c" stroke="#2a3340" stroke-width="3"/>
+    <rect width="208" height="22" rx="8" fill="#11161e"/>
+    <circle cx="16" cy="11" r="3.5" fill="#ef4444"/><circle cx="30" cy="11" r="3.5" fill="#f5b81d"/><circle cx="44" cy="11" r="3.5" fill="#34d399"/>
+    <g class="mono" font-size="12">
+      <text x="14" y="46" fill="#7ee787">$ codecanic scan --full</text>
+      <text x="14" y="68" fill="#22d3ee">&#8250; cloning repo&#8230;<tspan fill="#8c99ab"> ok</tspan></text>
+      <text x="14" y="90" fill="#22d3ee">&#8250; analyzing stack<tspan fill="#8c99ab">&#8230;</tspan></text>
+      <text x="14" y="112" fill="#34d399">&#10003; repair plan ready<tspan fill="#7ee787">_<animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/></tspan></text>
+    </g>
+  </g>
+
+  <!-- tool pegboard with code-symbol wrenches -->
+  <g transform="translate(610 150)" class="mono" font-size="22">
+    <rect x="-8" y="-26" width="150" height="54" rx="6" fill="#0c1219" stroke="#2a3340" stroke-width="2"/>
+    <text x="6" y="6" fill="#f5b81d">{ }</text>
+    <text x="52" y="6" fill="#22d3ee">;</text>
+    <text x="78" y="6" fill="#8c99ab">=&gt;</text>
+  </g>
+
+  <!-- diagnostic LED console -->
+  <g transform="translate(120 470)">
+    <rect width="150" height="34" rx="6" fill="#0c1219" stroke="#2a3340" stroke-width="2"/>
+    <circle cx="22" cy="17" r="6" fill="#ef4444"><animate attributeName="opacity" values="1;.2;1" dur="1.1s" repeatCount="indefinite"/></circle>
+    <circle cx="48" cy="17" r="6" fill="#f5b81d"><animate attributeName="opacity" values="1;.2;1" dur="1.1s" begin=".3s" repeatCount="indefinite"/></circle>
+    <circle cx="74" cy="17" r="6" fill="#34d399"><animate attributeName="opacity" values="1;.2;1" dur="1.1s" begin=".6s" repeatCount="indefinite"/></circle>
+    <text x="92" y="22" class="mono" font-size="12" fill="#8c99ab">LIVE</text>
+  </g>
+
+  <rect width="900" height="620" fill="url(#vignette)"/>
 </svg>
