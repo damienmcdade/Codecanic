@@ -33,6 +33,22 @@ for (const file of requiredFiles) {
   await access(file);
 }
 
+// Module-load smoke test: import every API handler so a used-but-unimported
+// symbol (a ReferenceError that only fires at request time, e.g. a missing
+// `import { fetchWithTimeout }`) fails the build instead of reaching prod.
+const apiModules = [
+  "billing", "oauth", "scan", "repair", "jobs", "orgs", "suppressions",
+  "connectors", "auth", "health", "_repo", "_scanner", "_repair", "_worker",
+  "_github", "_http", "_crypto", "_email", "_db", "_lib", "_auth", "_log"
+];
+for (const mod of apiModules) {
+  try {
+    await import(`../api/${mod}.js`);
+  } catch (err) {
+    throw new Error(`api/${mod}.js failed to load (likely a missing import): ${err.message}`);
+  }
+}
+
 const html = await readFile("index.html", "utf8");
 for (const marker of ["Codecanic", "Connectors", "Findings report", "Free for everyone", "Sponsor-supported"]) {
   if (!html.includes(marker)) {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getConnector, json, readBody, signState, verifyState, appBaseUrl, orgFromRequest, requestUrl, STATE_TTL_MS } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { currentUserContext } from "./_auth.js";
-import { encryptSecret } from "./_crypto.js";
+import { encryptSecret, decryptSecret } from "./_crypto.js";
 import { githubAppConfigured, getInstallation } from "./_github.js";
 import { fetchWithTimeout } from "./_http.js";
 import { logger } from "./_log.js";

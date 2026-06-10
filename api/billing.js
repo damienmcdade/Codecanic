@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { json, entitlements, planFor, resolveOrgContext, appBaseUrl } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { logger } from "./_log.js";
+import { fetchWithTimeout } from "./_http.js";
 
 // Codecanic stays free + ad-supported; Pro is an optional paid upgrade
 // (ad-free + unlimited scans). Stripe is used when configured; without keys,
