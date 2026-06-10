@@ -1,3 +1,8 @@
+# Secrets — never commit (Stripe/GitHub-App/session keys live in .env)
+.env
+.env.*
+!.env.example
+
 # Node
 node_modules/
 package-lock.json.bak
