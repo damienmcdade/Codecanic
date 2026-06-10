@@ -25,7 +25,9 @@ const { closeDb } = await import("../api/_db.js");
 
 try {
   console.log("Plan entitlements");
-  ok("Free: ads on, 50 scans/mo", entitlements("Free").adFree === false && entitlements("Free").monthlyScanLimit === 50);
+  // Sponsor-supported model: no paid tier — Free has UNLIMITED scans (same full
+  // feature set as the dormant Pro entry), matching the published Terms/Privacy.
+  ok("Free: ads on, unlimited scans (no paid tier)", entitlements("Free").adFree === false && entitlements("Free").monthlyScanLimit === null);
   ok("Pro: ad-free, unlimited scans", entitlements("Pro").adFree === true && entitlements("Pro").monthlyScanLimit === null);
   ok("unknown plan falls back to Free", entitlements("Bogus").plan === "Free");
 
@@ -44,13 +46,12 @@ try {
   await repo.setOrgPlan(org.id, "Free");
   ok("downgrade → Free", (await repo.organizationsForUser(owner.id))[0].plan === "Free");
 
-  console.log("\nMonthly scan counter (gates Free)");
+  console.log("\nMonthly scan counter (analytics only — no longer gates)");
   ok("starts at 0 scans this month", (await repo.countScansThisMonth(org.id)) === 0);
   for (let i = 0; i < 3; i++) await repo.enqueueJob({ type: "scan", organizationId: org.id, userId: owner.id, payload: {} });
   await repo.enqueueJob({ type: "repair", organizationId: org.id, userId: owner.id, payload: {} }); // not counted
   ok("counts only scan jobs this month", (await repo.countScansThisMonth(org.id)) === 3);
-  const plan = planFor("Free");
-  ok("limit logic: 3 < 50 → allowed", 3 < plan.monthlyScanLimit);
+  ok("Free has no scan limit (null) — same as Pro", planFor("Free").monthlyScanLimit === null);
   ok("Pro has no limit (null)", planFor("Pro").monthlyScanLimit === null);
 
   console.log("\nStripe webhook signature verification");

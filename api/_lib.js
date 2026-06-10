@@ -7,7 +7,14 @@ const DEFAULT_APP_URL = "https://codecanic.app";
 export const STATE_TTL_MS = 10 * 60_000;
 
 const plans = {
-  Free: { name: "Free", queueDelayMs: 200, workers: 24, label: "Priority queue", adFree: false, monthlyScanLimit: 50 },
+  // Sponsor-supported, no paid tier: every org gets the same full feature set
+  // including UNLIMITED scans (monthlyScanLimit: null), matching the published
+  // Terms/Privacy ("no paid tier... same full feature set... no payment
+  // processing"). The legitimate per-hour abuse cap (SCAN_RATE_LIMIT in
+  // scan.js) still applies. The dormant Pro entry is retained only so a stray
+  // legacy Stripe webhook can't reference an undefined plan; it is unreachable
+  // (checkout is disabled) and now grants nothing extra.
+  Free: { name: "Free", queueDelayMs: 200, workers: 24, label: "Priority queue", adFree: false, monthlyScanLimit: null },
   Pro: { name: "Pro", queueDelayMs: 0, workers: 48, label: "Pro queue", adFree: true, monthlyScanLimit: null }
 };
 

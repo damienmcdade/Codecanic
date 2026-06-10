@@ -23,6 +23,34 @@ const MAX_FILE_BYTES = 1_500_000; // skip files larger than this for content sca
 const MAX_FILES = 8000; // cap tree walk
 const MAX_FINDINGS = 500;
 const CLONE_TIMEOUT_MS = 60_000;
+// Hard ceiling on what an untrusted clone may write to worker disk. The 60s
+// timeout only bounds *time* — a fast link can push gigabytes (one huge tip
+// blob, or thousands of large blobs) and fill the worker disk before the
+// per-file walk caps (which only bound reads, not the clone's writes) apply.
+// A watchdog polls the clone dir and SIGKILLs git if it exceeds this.
+const MAX_CLONE_BYTES = 2_000_000_000; // 2 GB
+const CLONE_SIZE_POLL_MS = 3_000;
+
+// Cheap bounded directory-size check: sums file sizes, skips symlinks, and
+// early-exits as soon as the cap is exceeded so it stays fast on normal repos.
+export async function dirSizeExceeds(dir, capBytes) {
+  let total = 0;
+  async function walk(d) {
+    let entries;
+    try { entries = await readdir(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (total > capBytes) return;
+      const p = join(d, e.name);
+      try {
+        if (e.isSymbolicLink()) continue;
+        if (e.isDirectory()) await walk(p);
+        else { total += (await stat(p)).size; }
+      } catch { /* file may vanish mid-clone — ignore */ }
+    }
+  }
+  await walk(dir);
+  return total > capBytes;
+}
 const OSV_TIMEOUT_MS = 15_000;
 const MAX_OSV_PACKAGES = 600;
 
@@ -116,9 +144,18 @@ function cloneRepo(cloneUrl, dest) {
     let stderr = "";
     child.stderr.on("data", (d) => { stderr += d.toString(); if (stderr.length > 4000) stderr = stderr.slice(-4000); });
     const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Repository clone timed out.")); }, CLONE_TIMEOUT_MS);
-    child.on("error", (err) => { clearTimeout(timer); reject(new Error(`git not available: ${err.message}`)); });
+    // Disk-exhaustion watchdog: kill the clone if it writes more than the cap.
+    const sizeWatch = setInterval(async () => {
+      if (await dirSizeExceeds(dest, MAX_CLONE_BYTES)) {
+        clearInterval(sizeWatch);
+        child.kill("SIGKILL");
+        reject(new Error("Repository exceeds the maximum clone size."));
+      }
+    }, CLONE_SIZE_POLL_MS);
+    child.on("error", (err) => { clearTimeout(timer); clearInterval(sizeWatch); reject(new Error(`git not available: ${err.message}`)); });
     child.on("close", (code) => {
       clearTimeout(timer);
+      clearInterval(sizeWatch);
       if (code === 0) return resolve();
       // Redact any token that may appear in echoed URLs.
       const safe = stderr.replace(/https:\/\/[^@\s]+@/g, "https://***@").trim();

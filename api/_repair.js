@@ -12,10 +12,12 @@ import { mkdtemp, readFile, writeFile, rm, unlink, mkdir, access } from "node:fs
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
-import { validateGitUrl } from "./_scanner.js";
+import { validateGitUrl, dirSizeExceeds } from "./_scanner.js";
 import { fetchWithTimeout } from "./_http.js";
 
 const CLONE_TIMEOUT_MS = 60_000;
+const MAX_CLONE_BYTES = 2_000_000_000; // 2 GB — disk-exhaustion guard (see _scanner.js)
+const CLONE_SIZE_POLL_MS = 3_000;
 const GIT_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
@@ -236,9 +238,17 @@ function cloneAuthed(cloneUrl, dest) {
     let err = "";
     child.stderr.on("data", (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
     const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Repository clone timed out.")); }, CLONE_TIMEOUT_MS);
-    child.on("error", (e) => { clearTimeout(timer); reject(new Error(`git not available: ${e.message}`)); });
+    const sizeWatch = setInterval(async () => {
+      if (await dirSizeExceeds(dest, MAX_CLONE_BYTES)) {
+        clearInterval(sizeWatch);
+        child.kill("SIGKILL");
+        reject(new Error("Repository exceeds the maximum clone size."));
+      }
+    }, CLONE_SIZE_POLL_MS);
+    child.on("error", (e) => { clearTimeout(timer); clearInterval(sizeWatch); reject(new Error(`git not available: ${e.message}`)); });
     child.on("close", (code) => {
       clearTimeout(timer);
+      clearInterval(sizeWatch);
       if (code === 0) return resolve();
       const safe = err.replace(/https:\/\/[^@\s]+@/g, "https://***@");
       if (/Authentication failed|could not read Username|terminal prompts disabled|not found|HTTP Basic/i.test(safe)) {
