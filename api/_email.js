@@ -3,6 +3,8 @@
 // If RESEND_API_KEY is set, email is delivered via Resend. Otherwise the message
 // is logged (dev) — and callers expose the token in API responses only when not
 // production-like, so flows are testable without an email provider.
+import { fetchWithTimeout } from "./_http.js";
+
 const FROM = process.env.CODECANIC_EMAIL_FROM || "Codecanic <noreply@codecanic.app>";
 
 export function emailConfigured() {
@@ -14,7 +16,7 @@ export async function sendEmail({ to, subject, text, html }) {
     console.log(`[email:dev] to=${to} subject="${subject}"\n${text}`);
     return { delivered: false, dev: true };
   }
-  const res = await fetch("https://api.resend.com/emails", {
+  const res = await fetchWithTimeout("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,

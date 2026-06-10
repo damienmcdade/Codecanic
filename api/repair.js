@@ -1,8 +1,13 @@
-import { json, readBody, resolveOrgContext } from "./_lib.js";
+import { json, readBody, resolveOrgContext, ClientError } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { validateGitUrl } from "./_scanner.js";
 import { hasConnection } from "./_github.js";
 import { JOB_TYPES } from "./_jobs.js";
+import { logger } from "./_log.js";
+
+// Per-org enqueue rate limit (fixed window) — repair clones + pushes + opens PRs.
+const REPAIR_RATE_LIMIT = Number(process.env.CODECANIC_REPAIR_RATE_LIMIT || 20);
+const REPAIR_RATE_WINDOW_MS = Number(process.env.CODECANIC_REPAIR_RATE_WINDOW_MS || 60 * 60 * 1000);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -23,6 +28,13 @@ export default async function handler(req, res) {
     if (!context.user.emailVerified) {
       json(res, 403, { error: "Verify your email address before approving repairs.", code: "email_unverified" });
       return;
+    }
+
+    // Per-org enqueue rate limit (abuse / DoS bound).
+    const allowed = await repo.checkRateLimit(`repair:${context.organization.id}`, REPAIR_RATE_LIMIT, REPAIR_RATE_WINDOW_MS);
+    if (!allowed) {
+      res.setHeader("Retry-After", String(Math.ceil(REPAIR_RATE_WINDOW_MS / 1000)));
+      throw new ClientError(`Too many repairs queued. Limit is ${REPAIR_RATE_LIMIT} per hour for this organization. Try again later.`, 429);
     }
 
     const body = await readBody(req);
@@ -73,6 +85,9 @@ export default async function handler(req, res) {
 
     json(res, 202, { jobId: job.id, type: "repair", status: job.status, pollUrl: `/api/jobs/${job.id}` });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("repair.handler_error", { err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }

@@ -81,6 +81,17 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+// Only allow https/http/mailto in href sinks so a hostile API payload can't
+// inject a javascript: or data: URL that runs on click.
+function safeHref(u) {
+  try {
+    const p = new URL(u, location.origin).protocol;
+    return (p === "https:" || p === "http:" || p === "mailto:") ? u : "#";
+  } catch {
+    return "#";
+  }
+}
+
 function fireControl(control) {
   control.classList.remove("is-firing");
   void control.offsetWidth;
@@ -223,7 +234,7 @@ function renderJobs() {
     ? state.repairJobs
         .map((job) => {
           const title = job.pullRequestUrl
-            ? `<a href="${escapeHtml(job.pullRequestUrl)}" target="_blank" rel="noopener">${escapeHtml(job.branchName || "View pull request")}</a>`
+            ? `<a href="${escapeHtml(safeHref(job.pullRequestUrl))}" target="_blank" rel="noopener">${escapeHtml(job.branchName || "View pull request")}</a>`
             : escapeHtml(job.branchName || "Repair job");
           const bits = [];
           const statusLabel = { queued: "queued", running: "running", pull_request_opened: "PR opened", no_changes: "no changes", failed: "failed" }[job.status] || job.status;
@@ -430,7 +441,9 @@ function setAuthMode(mode) {
   document.querySelector("#auth-modal-title").textContent = isSignup ? "Create account" : "Sign in";
   document.querySelector("#auth-submit").textContent = isSignup ? "Create account" : "Sign in";
   document.querySelectorAll("[data-auth-tab]").forEach((tab) => {
-    tab.classList.toggle("selected", tab.dataset.authTab === mode);
+    const selected = tab.dataset.authTab === mode;
+    tab.classList.toggle("selected", selected);
+    tab.setAttribute("aria-selected", selected ? "true" : "false");
   });
   document.querySelectorAll("[data-auth-only]").forEach((field) => {
     field.hidden = field.dataset.authOnly !== mode;
@@ -566,9 +579,10 @@ const legalText = {
       <tr><td>Organizations and roles</td><td>Workspace ownership and access control</td><td>Contract</td><td>Until you delete account or leave the organization</td></tr>
       <tr><td>OAuth access tokens (GitHub, Vercel, GitLab, Bitbucket) and manual tokens (Railway, Xcode)</td><td>Run scans and propose repairs on your authorization</td><td>Contract</td><td>Until you disconnect the provider, leave the org, or delete account; deletion is immediate and cascades</td></tr>
       <tr><td>Scan reports and repair queue entries</td><td>Show you findings, let you approve fixes</td><td>Contract</td><td>Until you delete account or remove report</td></tr>
+      <tr><td>Stripe customer / subscription ID and plan status (only if you upgrade to Pro; full card details are held by Stripe, never by us)</td><td>Apply the optional ad-free benefit, manage and cancel the subscription</td><td>Contract (Art. 6(1)(b))</td><td>Until you cancel and delete your account; billing records kept as legally required</td></tr>
       <tr><td>Signed session cookie <code>codecanic_session</code> (HttpOnly, Secure, SameSite=Strict)</td><td>Identify your authenticated browser</td><td>Contract — strictly necessary</td><td>14 days from issue, refreshed on activity</td></tr>
       <tr><td>Acceptance timestamps for Terms + Privacy Policy</td><td>Demonstrate informed consent</td><td>Legal obligation (Art. 6(1)(c))</td><td>Life of the account + 6 years</td></tr>
-      <tr><td>Marketing opt-in flag</td><td>Honour your email preference (we do not currently send any marketing emails)</td><td>Consent (Art. 6(1)(a))</td><td>Until you delete account or opt out</td></tr>
+      <tr><td>Marketing opt-in flag</td><td>Honor your email preference (we do not currently send any marketing emails)</td><td>Consent (Art. 6(1)(a))</td><td>Until you delete account or opt out</td></tr>
       <tr><td>HTTP request logs (IP, path, status, timestamp, user agent)</td><td>Abuse detection, debugging, security audit</td><td>Legitimate interest (Art. 6(1)(f))</td><td>30 days then rotated</td></tr>
       <tr><td>Failed-login counters (IP + email)</td><td>Rate-limit credential stuffing</td><td>Legitimate interest</td><td>15 minutes after last failure</td></tr>
     </tbody></table>
@@ -579,13 +593,16 @@ const legalText = {
       <tr><td><code>codecanic_session</code></td><td>Codecanic (1st party)</td><td>Authentication — strictly necessary, set only after sign-in</td><td>14 days</td></tr>
       <tr><td><code>codecanic-cookie-consent</code> (localStorage)</td><td>Codecanic</td><td>Remember your consent choice on the cookie banner</td><td>Until you clear browser storage</td></tr>
       <tr><td><code>codecanic-state</code> (localStorage)</td><td>Codecanic</td><td>Cache your dashboard layout, connector status, audit trail</td><td>Until you sign out, delete the account, or clear browser storage</td></tr>
-      <tr><td>Google AdSense cookies (<code>__gads</code>, <code>__gpi</code>, <code>IDE</code>, others)</td><td>Google (3rd party)</td><td>Ad delivery, frequency capping, fraud detection, optionally personalisation. <strong>Only set after you accept on the cookie banner.</strong></td><td>Up to 13 months (Google policy)</td></tr>
+      <tr><td>Google AdSense cookies (<code>__gads</code>, <code>__gpi</code>, <code>IDE</code>, others)</td><td>Google (3rd party)</td><td>Ad delivery, frequency capping, fraud detection, optionally personalization. <strong>Only set after you accept on the cookie banner.</strong></td><td>Up to 13 months (Google policy)</td></tr>
     </tbody></table>
     <p>If you select <strong>Essential only</strong> on the cookie banner the AdSense script is not loaded at all — no Google cookies are set, no requests are made to Google ad servers, and the sponsor slots remain blank.</p>
 
     <h4>3. Advertising</h4>
-    <p>Codecanic is free for everyone and supported by ads served by Google AdSense (publisher <code>ca-pub-8731629548430880</code>). When you accept ad cookies, Google may receive your approximate location, device, IP-derived signals, and AdSense cookie identifiers to deliver and measure personalised or non-personalised ads. Manage your Google ad preferences at <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">adssettings.google.com</a>. Google's privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a>.</p>
-    <p>EEA / UK / Swiss users: when consent is required, Google's IAB TCF v2.2 prompt may also appear before personalised ads are served. You can withdraw consent at any time by clicking <strong>Manage cookies</strong> in your account card.</p>
+    <p>Codecanic is free to use and supported by ads served by Google AdSense (publisher <code>ca-pub-8731629548430880</code>). An optional paid <strong>Pro (ad-free)</strong> subscription removes these ads; see "Payments and the optional Pro subscription" below. When you accept ad cookies, Google may receive your approximate location, device, IP-derived signals, and AdSense cookie identifiers to deliver and measure personalized or non-personalized ads. Manage your Google ad preferences at <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">adssettings.google.com</a>. Google's privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a>.</p>
+    <p>EEA / UK / Swiss users: when consent is required, Google's IAB TCF v2.2 prompt may also appear before personalized ads are served. You can withdraw consent at any time by clicking <strong>Manage cookies</strong> in your account card.</p>
+
+    <h4>Payments and the optional Pro subscription</h4>
+    <p>The core Service is free. We also offer an optional paid <strong>Pro (ad-free)</strong> subscription that removes the sponsor ad slots. Payments are processed by <strong>Stripe, Inc.</strong> When you upgrade, your payment-card details are collected and handled directly by Stripe under its own <a href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer">privacy policy</a> — <strong>Codecanic never receives or stores your full card number, CVC, or expiry</strong>. We retain only a Stripe customer / subscription identifier and your plan status so we can apply the ad-free benefit and let you manage or cancel the subscription.</p>
 
     <h4>4. Subprocessors (third parties that process data on our behalf)</h4>
     <table class="legal-table"><tbody>
@@ -593,6 +610,7 @@ const legalText = {
       <tr><td>Vercel Inc.</td><td>Static frontend hosting (codecanic.app) and edge proxy for <code>/api/*</code></td><td>USA</td></tr>
       <tr><td>Railway Corp.</td><td>API hosting and persistent data store</td><td>USA (US West region)</td></tr>
       <tr><td>Google LLC (AdSense)</td><td>Sponsor ad delivery — only after you opt in</td><td>USA</td></tr>
+      <tr><td>Stripe, Inc.</td><td>Payment processing for the optional Pro (ad-free) subscription — only if you upgrade</td><td>USA</td></tr>
       <tr><td>GitHub, GitLab, Bitbucket, Vercel, Railway, Apple Developer (when you connect them)</td><td>OAuth identity and the read scopes you grant for each scan</td><td>USA / EEA depending on provider</td></tr>
     </tbody></table>
 
@@ -614,7 +632,7 @@ const legalText = {
     <ul>
       <li><strong>Categories collected</strong>: identifiers (email, IP), commercial info (organization), internet activity (request logs), inferences (none).</li>
       <li><strong>"Sale" of personal information</strong>: we do not sell personal information.</li>
-      <li><strong>"Sharing" for cross-context behavioural advertising</strong>: when you accept ad cookies, we share advertising identifiers with Google AdSense. You can opt out at any time by selecting <em>Essential only</em> on the cookie banner or by clicking <em>Manage cookies</em>. We treat that signal as your <strong>Do Not Sell or Share My Personal Information</strong> request.</li>
+      <li><strong>"Sharing" for cross-context behavioral advertising</strong>: when you accept ad cookies, we share advertising identifiers with Google AdSense. You can opt out at any time by selecting <em>Essential only</em> on the cookie banner or by clicking <em>Manage cookies</em>. We treat that signal as your <strong>Do Not Sell or Share My Personal Information</strong> request.</li>
       <li><strong>Sensitive PII</strong>: we do not collect sensitive personal information as defined by CCPA.</li>
       <li><strong>Right to limit use</strong>: not applicable because we do not use sensitive PII.</li>
       <li><strong>Authorised agent</strong>: you may designate one in writing.</li>
@@ -640,7 +658,7 @@ const legalText = {
     <p>Scan findings and proposed repairs are produced by deterministic rules and pattern matchers. We do not currently use machine-learning models that profile you or make automated decisions producing legal effects. If that changes we will update this policy and notify you.</p>
 
     <h4>11. Accessibility</h4>
-    <p>Codecanic aims to meet WCAG 2.1 AA where practical. The dashboard supports keyboard navigation, screen-reader-compatible ARIA labels on interactive controls, sufficient colour contrast, and respects <code>prefers-reduced-motion</code> for animations. We have not yet completed a formal accessibility audit. Report accessibility barriers to <a href="mailto:accessibility@codecanic.app">accessibility@codecanic.app</a>; we will acknowledge within 5 business days.</p>
+    <p>Codecanic aims to meet WCAG 2.1 AA where practical. The dashboard supports keyboard navigation, screen-reader-compatible ARIA labels on interactive controls, sufficient color contrast, and respects <code>prefers-reduced-motion</code> for animations. We have not yet completed a formal accessibility audit. Report accessibility barriers to <a href="mailto:accessibility@codecanic.app">accessibility@codecanic.app</a>; we will acknowledge within 5 business days.</p>
 
     <h4>12. Changes</h4>
     <p>If we make material changes to this policy we will display a banner on first sign-in after the change and update the "Last updated" date above. Continued use after the effective date constitutes acceptance.</p>
@@ -654,7 +672,7 @@ const legalText = {
     <p>By creating an account or using Codecanic ("the Service") you agree to these terms. If you do not agree, do not use the Service.</p>
 
     <h4>1. The Service</h4>
-    <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The Service is free of charge and supported by sponsor advertising. You retain ownership of your code, your provider accounts, and any data you submit.</p>
+    <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The Service is free to use and supported by sponsor advertising. An optional paid "Pro (ad-free)" subscription is available if you prefer an ad-free experience; it is not required to scan a repository or open repair pull requests. You retain ownership of your code, your provider accounts, and any data you submit.</p>
 
     <h4>2. Eligibility</h4>
     <p>You must be at least 16 years old and able to enter a binding contract. You may use the Service on behalf of a company; if so, you represent that you have authority to bind that company.</p>
@@ -680,7 +698,7 @@ const legalText = {
     <p>Codecanic proposes repairs but does NOT merge them automatically. You approve the segments you want, and Codecanic prepares a draft pull request on your behalf using your authorized provider tokens. You are responsible for reviewing the proposed code before merging into production. Codecanic makes no representation that proposed repairs are correct, complete, or fit for any particular purpose.</p>
 
     <h4>6. Your content</h4>
-    <p>You grant Codecanic a worldwide, non-exclusive, royalty-free, terminable licence to access, copy, scan, and process the repository content and metadata you connect, solely to provide the Service to you. You may revoke this licence at any time by disconnecting the relevant connector or deleting your account, after which we cease the corresponding processing within 30 days (in practice, immediately for connector disconnect / account delete).</p>
+    <p>You grant Codecanic a worldwide, non-exclusive, royalty-free, terminable license to access, copy, scan, and process the repository content and metadata you connect, solely to provide the Service to you. You may revoke this license at any time by disconnecting the relevant connector or deleting your account, after which we cease the corresponding processing within 30 days (in practice, immediately for connector disconnect / account delete).</p>
 
     <h4>7. Intellectual property and DMCA</h4>
     <p>Codecanic and the Service are owned by us and protected by IP laws. The trademarks, logos, and service marks displayed on Codecanic are our property or the property of their respective owners and may not be used without permission.</p>
@@ -695,8 +713,8 @@ const legalText = {
     </ol>
     <p>Counter-notices may be sent to the same address. We may terminate repeat infringers per our DMCA policy.</p>
 
-    <h4>8. Cost and ads</h4>
-    <p>The Service is free of charge. We do not collect payment information. The Service is supported by ads delivered via Google AdSense; see the Privacy Policy for details and your consent controls.</p>
+    <h4>8. Cost, ads, and the optional Pro subscription</h4>
+    <p>The core Service is free to use and supported by ads delivered via Google AdSense; see the Privacy Policy for ad details and your consent controls. We also offer an optional paid <strong>Pro (ad-free)</strong> subscription that removes the sponsor ad slots. If you choose to upgrade, payment is processed by our payment provider, <strong>Stripe, Inc.</strong> Stripe collects and handles your payment-card information directly under its own terms and privacy policy; Codecanic does not receive or store your full card details. You may cancel at any time, and Pro is never required to scan a repository or open repair pull requests.</p>
 
     <h4>9. Suspension and termination</h4>
     <p>You may delete your account at any time via the dashboard. We may suspend or terminate your access (with or without notice) if you violate these terms, applicable law, or our AUP. On termination, sections 7, 9, 10, 11, 12, 13, and 14 survive.</p>
@@ -711,7 +729,7 @@ const legalText = {
     <p>You agree to indemnify and hold Codecanic harmless from any claim, demand, loss, or expense (including reasonable legal fees) arising from your violation of these terms, your AUP violations, or your infringement of any third-party right (including IP rights) through your use of the Service.</p>
 
     <h4>13. Governing law and dispute resolution</h4>
-    <p>These terms are governed by the laws of the jurisdiction in which Codecanic is principally operated, without regard to its conflict-of-law rules. Before bringing any claim, you agree to first contact us at <a href="mailto:legal@codecanic.app">legal@codecanic.app</a> and attempt good-faith resolution for at least 30 days. If unresolved, any dispute will be brought in the small-claims court of competent jurisdiction or, at either party's election, before a neutral arbitrator under the rules of a recognised arbitration body. Class actions are waived to the extent permitted by law. Nothing in this section prevents you from exercising any non-waivable consumer rights under your local law.</p>
+    <p>These terms are governed by the laws of the jurisdiction in which Codecanic is principally operated, without regard to its conflict-of-law rules. Before bringing any claim, you agree to first contact us at <a href="mailto:legal@codecanic.app">legal@codecanic.app</a> and attempt good-faith resolution for at least 30 days. If unresolved, any dispute will be brought in the small-claims court of competent jurisdiction or, at either party's election, before a neutral arbitrator under the rules of a recognized arbitration body. Class actions are waived to the extent permitted by law. Nothing in this section prevents you from exercising any non-waivable consumer rights under your local law.</p>
 
     <h4>14. Severability + entire agreement</h4>
     <p>If any provision of these terms is held unenforceable, the remaining provisions remain in force. These terms (together with the Privacy Policy) constitute the entire agreement between you and Codecanic regarding the Service and supersede any prior agreements.</p>
@@ -741,7 +759,9 @@ function closeLegalModal() {
 
 function setLegalTab(tab) {
   document.querySelectorAll("[data-legal-tab]").forEach((btn) => {
-    btn.classList.toggle("selected", btn.dataset.legalTab === tab);
+    const selected = btn.dataset.legalTab === tab;
+    btn.classList.toggle("selected", selected);
+    btn.setAttribute("aria-selected", selected ? "true" : "false");
   });
   document.querySelector("#legal-modal-title").textContent =
     tab === "terms" ? "Terms of Service" : "Privacy Policy";
@@ -1107,7 +1127,7 @@ function renderManualBlock(detail) {
     .join("");
   const link = document.querySelector("#connect-manual-link");
   if (detail.tokenUrl) {
-    link.href = detail.tokenUrl;
+    link.href = safeHref(detail.tokenUrl);
     link.hidden = false;
     link.textContent = `Open ${wizard.provider} token page →`;
   } else {
@@ -1159,11 +1179,13 @@ function renderGuide(detail) {
     cliWrap.hidden = false;
     cliName.textContent = detail.cli.name;
     cliQuick.textContent = detail.cli.quickstart || "";
-    cliLink.href = detail.cli.homepage || "#";
+    cliLink.href = detail.cli.homepage ? safeHref(detail.cli.homepage) : "#";
     cliLink.hidden = !detail.cli.homepage;
     const os = wizardGuide.os;
     document.querySelectorAll("#connect-guide .connect-guide-tabs button").forEach((b) => {
-      b.classList.toggle("selected", b.dataset.cliOs === os);
+      const selected = b.dataset.cliOs === os;
+      b.classList.toggle("selected", selected);
+      b.setAttribute("aria-selected", selected ? "true" : "false");
     });
     cliCmd.textContent = detail.cli.install?.[os] || "Not available for this OS.";
   } else {
@@ -1454,21 +1476,43 @@ async function pollJob(jobId, { timeoutMs = 180000, intervalMs = 1500 } = {}) {
 
 let scanInProgress = false;
 
+// Auth + email-verification gate shared by every scan entry point (the in-panel
+// #scan-form submit and the topbar #run-scan button). Returns true when scanning
+// is allowed, otherwise shows the appropriate friendly toast and returns false.
+function canScan() {
+  if (!session.user) {
+    openAuthModal("signin");
+    showToast("Sign in to start a scan.");
+    return false;
+  }
+  if (session.user.emailVerified === false) {
+    const banner = document.querySelector("#verify-banner");
+    if (banner) banner.hidden = false;
+    showToast("Verify your email address before scanning.");
+    return false;
+  }
+  return true;
+}
+
 async function runScan() {
   // Re-entrancy guard: ignore a second click while a scan is running, so we
   // never start two overlapping jobs (and leak the first stepper timer).
   if (scanInProgress) return;
+  if (!canScan()) return;
   const sourceUrl = document.querySelector("#source-url").value.trim();
   if (!sourceUrl) {
     showToast("Enter a repository URL (https://github.com/owner/repo) to scan.");
     return;
   }
-  const scanDepth = document.querySelector("#scan-depth").value;
+  const scanDepthSelect = document.querySelector("#scan-depth");
+  const scanDepth = scanDepthSelect.value;
+  const depthLabel = scanDepthSelect.options[scanDepthSelect.selectedIndex]?.text || "Full infrastructure scan";
   scanInProgress = true;
   const scanButton = document.querySelector("#run-scan");
   if (scanButton) scanButton.disabled = true;
   scanState.textContent = "Running";
-  showToast("Full infrastructure scan started.");
+  if (findingsRoot) findingsRoot.setAttribute("aria-busy", "true");
+  showToast(`${depthLabel} started.`);
 
   let index = 0;
   renderTimeline(index);
@@ -1495,6 +1539,7 @@ async function runScan() {
   } finally {
     window.clearInterval(timer);
     document.body.classList.remove("scan-active");
+    if (findingsRoot) findingsRoot.setAttribute("aria-busy", "false");
     scanInProgress = false;
     if (scanButton) scanButton.disabled = false;
   }
@@ -1647,16 +1692,9 @@ window.addEventListener("scroll", syncActiveNavigation, { passive: true });
 
 document.querySelector("#scan-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!session.user) {
-    openAuthModal("signin");
-    showToast("Sign in to start a scan.");
-    return;
-  }
-  if (session.user.emailVerified === false) {
-    document.querySelector("#verify-banner").hidden = false;
-    showToast("Verify your email address before scanning.");
-    return;
-  }
+  // runScan() calls canScan() itself; this early call surfaces the friendly
+  // toast without flashing the scan UI when the gate fails.
+  if (!canScan()) return;
   runScan();
 });
 

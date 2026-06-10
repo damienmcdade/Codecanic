@@ -175,7 +175,7 @@
                 <p class="eyebrow">Scan pipeline</p>
                 <h2>Current run</h2>
               </div>
-              <span class="pill" id="scan-state">Ready</span>
+              <span class="pill" id="scan-state" role="status" aria-live="polite">Ready</span>
             </div>
             <form class="scan-form" id="scan-form">
               <label>
@@ -344,7 +344,7 @@
           <div class="faq-list">
             <details>
               <summary>Is Codecanic really free?</summary>
-              <p>Yes. Codecanic is free for every team and supported by unobtrusive sponsor placements. There is no paid tier required to scan a repository or open repair pull requests.</p>
+              <p>Yes. The core of Codecanic is free for every team and supported by unobtrusive sponsor placements — no paid tier is required to scan a repository or open repair pull requests. If you'd rather not see ads, there's an optional paid <strong>Pro (ad-free)</strong> subscription. Pro payments are processed by Stripe; your card details are handled by Stripe and are never stored by Codecanic. You can cancel anytime.</p>
             </details>
             <details>
               <summary>Does Codecanic change my code automatically?</summary>
@@ -364,7 +364,7 @@
             </details>
           </div>
           <p class="content-foot muted">
-            Codecanic is operated as a free, sponsor-supported service. Read our
+            Codecanic is operated as a free, sponsor-supported service, with an optional paid Pro (ad-free) upgrade. Read our
             <button type="button" class="link-button" data-open-legal="privacy">Privacy Policy</button> and
             <button type="button" class="link-button" data-open-legal="terms">Terms of Service</button>, or
             email <a href="mailto:hello@codecanic.app">hello@codecanic.app</a> with any questions.
@@ -382,10 +382,10 @@
           <button class="icon-button" type="button" id="legal-close" aria-label="Close">×</button>
         </header>
         <div class="legal-tabs" role="tablist">
-          <button type="button" class="selected" data-legal-tab="privacy" role="tab">Privacy</button>
-          <button type="button" data-legal-tab="terms" role="tab">Terms</button>
+          <button type="button" class="selected" data-legal-tab="privacy" role="tab" aria-selected="true" aria-controls="legal-body">Privacy</button>
+          <button type="button" data-legal-tab="terms" role="tab" aria-selected="false" aria-controls="legal-body">Terms</button>
         </div>
-        <div class="legal-body" id="legal-body"></div>
+        <div class="legal-body" id="legal-body" role="tabpanel"></div>
         <p class="muted legal-disclaimer">
           Codecanic is a small team. These policies are good-faith summaries and not a substitute for advice from a licensed attorney in your jurisdiction.
           For data subject requests under GDPR, CCPA, or equivalent laws, email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.
@@ -396,7 +396,7 @@
     <div class="cookie-banner" id="cookie-banner" hidden role="dialog" aria-labelledby="cookie-banner-title" aria-describedby="cookie-banner-body">
       <strong id="cookie-banner-title">Cookies and ad consent</strong>
       <span id="cookie-banner-body">
-        Codecanic always uses a strictly-necessary session cookie when you sign in. To keep the service free we also load Google AdSense, which sets its own cookies for ad delivery, frequency capping, and (if you agree) personalisation. You can change your choice anytime via <em>Manage cookies</em> in your account card.
+        Codecanic always uses a strictly-necessary session cookie when you sign in. To keep the service free we also load Google AdSense, which sets its own cookies for ad delivery, frequency capping, and (if you agree) personalization. You can change your choice anytime via <em>Manage cookies</em> in your account card.
       </span>
       <div class="cookie-actions">
         <button class="ghost" type="button" id="cookie-reject">Essential only</button>
@@ -517,11 +517,11 @@
           <div class="connect-guide-section" id="connect-guide-cli-wrap">
             <h4>Optional: install the <span class="guide-cli-name">provider</span> CLI</h4>
             <div class="connect-guide-tabs" role="tablist">
-              <button type="button" class="selected" data-cli-os="mac" role="tab">macOS</button>
-              <button type="button" data-cli-os="windows" role="tab">Windows</button>
-              <button type="button" data-cli-os="linux" role="tab">Linux</button>
+              <button type="button" class="selected" data-cli-os="mac" role="tab" aria-selected="true" aria-controls="connect-guide-cli-cmd">macOS</button>
+              <button type="button" data-cli-os="windows" role="tab" aria-selected="false" aria-controls="connect-guide-cli-cmd">Windows</button>
+              <button type="button" data-cli-os="linux" role="tab" aria-selected="false" aria-controls="connect-guide-cli-cmd">Linux</button>
             </div>
-            <pre class="connect-snippet" id="connect-guide-cli-cmd"></pre>
+            <pre class="connect-snippet" id="connect-guide-cli-cmd" role="tabpanel"></pre>
             <p class="muted">After install, run <code id="connect-guide-cli-quickstart"></code> to authenticate.</p>
             <a class="connect-manual-link" id="connect-guide-cli-link" href="#" target="_blank" rel="noopener noreferrer">CLI docs →</a>
           </div>
@@ -555,8 +555,8 @@
           <button class="icon-button" type="button" id="auth-close" aria-label="Close">×</button>
         </header>
         <div class="auth-tabs" role="tablist">
-          <button type="button" data-auth-tab="signin" class="selected">Sign in</button>
-          <button type="button" data-auth-tab="signup">Create account</button>
+          <button type="button" role="tab" data-auth-tab="signin" class="selected" aria-selected="true">Sign in</button>
+          <button type="button" role="tab" data-auth-tab="signup" aria-selected="false">Create account</button>
         </div>
         <form id="auth-form">
           <label data-auth-only="signup">

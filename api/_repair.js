@@ -11,8 +11,9 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, writeFile, rm, unlink, mkdir, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { validateGitUrl } from "./_scanner.js";
+import { fetchWithTimeout } from "./_http.js";
 
 const CLONE_TIMEOUT_MS = 60_000;
 const GIT_TIMEOUT_MS = 30_000;
@@ -219,8 +220,19 @@ function git(args, { cwd, timeout = GIT_TIMEOUT_MS } = {}) {
 
 function cloneAuthed(cloneUrl, dest) {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", ["-c", "credential.helper=", "clone", "--depth", "1", "--single-branch", cloneUrl, dest],
-      { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, stdio: ["ignore", "ignore", "pipe"] });
+    // The clone URL embeds the GitHub token, so harden against a 3xx redirect to
+    // an attacker host leaking it: disable redirect following + interactive
+    // credential prompts, matching the read-only scan clone in _scanner.js.
+    const child = spawn(
+      "git",
+      [
+        "-c", "credential.helper=",
+        "-c", "core.askpass=true",
+        "-c", "http.followRedirects=false",
+        "clone", "--depth", "1", "--single-branch", "--no-tags", cloneUrl, dest
+      ],
+      { env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" }, stdio: ["ignore", "ignore", "pipe"] }
+    );
     let err = "";
     child.stderr.on("data", (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
     const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Repository clone timed out.")); }, CLONE_TIMEOUT_MS);
@@ -237,7 +249,7 @@ function cloneAuthed(cloneUrl, dest) {
 }
 
 async function createGithubPr({ owner, repo, head, base, title, body, token }) {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
+  const res = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -293,6 +305,15 @@ export function confidenceScore(confidence = []) {
 // ---------------------------------------------------------------------------
 // Orchestration (production path)
 // ---------------------------------------------------------------------------
+// Deterministic branch name from the repair inputs (report + the exact set of
+// findings). A retried job reuses the SAME branch, so the existing-branch/PR
+// 422 guard short-circuits instead of opening a duplicate PR.
+export function repairBranchName(reportId, findings = []) {
+  const ids = (findings || []).map((f) => f?.id).filter(Boolean).sort();
+  const hash = createHash("sha256").update(`${reportId || ""}|${ids.join(",")}`).digest("hex").slice(0, 12);
+  return `codecanic/repair-${hash}`;
+}
+
 export async function runRepair({ sourceUrl, token, findings, reportId = null }) {
   const meta = validateGitUrl(sourceUrl);
   if (!meta.host.endsWith("github.com")) {
@@ -317,7 +338,18 @@ export async function runRepair({ sourceUrl, token, findings, reportId = null })
   try {
     await cloneAuthed(cloneUrl, workDir);
     const baseBranch = await git(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: workDir });
-    const branch = `codecanic/repair-${randomUUID().slice(0, 8)}`;
+    // Deterministic branch (R1): a retry of the SAME (report, findings) reuses
+    // this branch. If it already exists on the remote, a PR was already opened
+    // for it — short-circuit rather than push a duplicate.
+    const branch = repairBranchName(reportId, findings);
+    let remoteHas = false;
+    try {
+      const ls = await git(["ls-remote", "--heads", "origin", branch], { cwd: workDir });
+      remoteHas = Boolean(ls && ls.trim());
+    } catch { /* ls-remote best-effort; fall through to the normal push/PR guard */ }
+    if (remoteHas) {
+      return { opened: false, reason: "A repair branch for these findings already exists; a pull request was already opened.", branch, baseBranch, applied: { changed: [], removed: [], summary: [] }, manual: plan.manual };
+    }
     await git(["checkout", "-b", branch], { cwd: workDir });
 
     const applied = await applyPlan(workDir, plan);

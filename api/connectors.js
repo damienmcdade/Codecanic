@@ -3,6 +3,8 @@ import { getConnector, json, signState, appBaseUrl, orgFromRequest, requestUrl, 
 import * as repo from "./_repo.js";
 import { currentUserContext } from "./_auth.js";
 import { decryptSecret } from "./_crypto.js";
+import { fetchWithTimeout } from "./_http.js";
+import { logger } from "./_log.js";
 
 const providerGuides = {
   GitHub: {
@@ -300,7 +302,7 @@ async function handleVerify(req, res, url) {
   }
 
   try {
-    const response = await fetch(endpoint.url, {
+    const response = await fetchWithTimeout(endpoint.url, {
       method: endpoint.method || "GET",
       headers: { "User-Agent": "Codecanic-Verify", ...endpoint.auth(plainToken) },
       body: endpoint.body
@@ -374,7 +376,7 @@ async function handleProjects(req, res, url) {
   }
   try {
     const plainToken = decryptSecret(credential.accessToken);
-    const response = await fetch(endpoint.url, {
+    const response = await fetchWithTimeout(endpoint.url, {
       method: endpoint.method || "GET",
       headers: { "User-Agent": "Codecanic-Connect", ...endpoint.auth(plainToken) },
       body: endpoint.body
@@ -544,6 +546,9 @@ export default async function handler(req, res) {
     if (action === "projects") return await handleProjects(req, res, url);
     return await handleStart(req, res, url);
   } catch (error) {
-    json(res, 500, { error: error.message || "Connector request failed." });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("connectors.handler_error", { action, err: error });
+    json(res, statusCode, { error: expose ? error.message : "Connector request failed." });
   }
 }

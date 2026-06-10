@@ -1,5 +1,6 @@
 import { json, readBody, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
+import { logger } from "./_log.js";
 
 // GET    /api/suppressions               → list suppressed finding fingerprints
 // POST   /api/suppressions {fingerprint} → suppress a finding (hidden from scans)
@@ -39,6 +40,9 @@ export default async function handler(req, res) {
     }
     json(res, 405, { error: "Method not allowed" });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("suppressions.handler_error", { err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }

@@ -8,6 +8,7 @@
 import { createSign } from "node:crypto";
 import * as repo from "./_repo.js";
 import { decryptSecret } from "./_crypto.js";
+import { fetchWithTimeout } from "./_http.js";
 
 const b64url = (input) => Buffer.from(input).toString("base64url");
 
@@ -30,7 +31,7 @@ export function appJwt(now = Math.floor(Date.now() / 1000)) {
 }
 
 export async function installationToken(installationId) {
-  const res = await fetch(`https://api.github.com/app/installations/${encodeURIComponent(installationId)}/access_tokens`, {
+  const res = await fetchWithTimeout(`https://api.github.com/app/installations/${encodeURIComponent(installationId)}/access_tokens`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${appJwt()}`,
@@ -42,6 +43,25 @@ export async function installationToken(installationId) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 201 && data.token) return { token: data.token, expiresAt: data.expires_at };
   throw new Error(`GitHub App token exchange failed (${res.status}): ${data.message || "unknown"}`);
+}
+
+// Fetch an installation's metadata using the App JWT. Used to verify ownership
+// of an installation_id reported back to the App's setup callback before we
+// store it (so a user can't bind an arbitrary installation to their org).
+// Returns { account: { login, type } } or null if the lookup isn't possible.
+export async function getInstallation(installationId) {
+  if (!githubAppConfigured()) return null;
+  const res = await fetchWithTimeout(`https://api.github.com/app/installations/${encodeURIComponent(installationId)}`, {
+    headers: {
+      Authorization: `Bearer ${appJwt()}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "Codecanic",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status !== 200) throw new Error(`GitHub App installation lookup failed (${res.status}): ${data.message || "unknown"}`);
+  return data;
 }
 
 const HOST_PROVIDER = {

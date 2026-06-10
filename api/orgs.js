@@ -1,6 +1,7 @@
 import { json, readBody } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { currentUserContext, publicOrganization, slugify } from "./_auth.js";
+import { logger } from "./_log.js";
 
 async function listOrgs(req, res) {
   const context = await currentUserContext(req);
@@ -34,6 +35,9 @@ export default async function handler(req, res) {
     if (req.method === "POST") return await createOrg(req, res);
     json(res, 405, { error: "Method not allowed" });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("orgs.handler_error", { err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }

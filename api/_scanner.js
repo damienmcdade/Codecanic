@@ -312,29 +312,90 @@ async function osvFetch(path, body) {
   }
 }
 
+// Map a numeric CVSS base score (0–10) to a severity bucket/label.
+export function scoreToSeverity(score) {
+  if (score >= 9) return { label: "critical", critical: true };
+  if (score >= 7) return { label: "high", critical: true };
+  if (score >= 4) return { label: "moderate", critical: false };
+  if (score > 0) return { label: "low", critical: false };
+  return { label: "low", critical: false };
+}
+
 function severityFromVuln(vuln) {
-  const ds = vuln?.database_specific?.severity;
+  // 1) OSV severity[] entries — usually a CVSS *vector* (CVSS_V3/CVSS_V31), but
+  //    can also be a bare numeric score. Take the highest score we can derive.
+  const sev = Array.isArray(vuln?.severity) ? vuln.severity : [];
+  let best = null;
+  for (const s of sev) {
+    const score = parseCvssScore(s?.score);
+    if (score != null && (best == null || score > best)) best = score;
+  }
+
+  // 2) database_specific fallbacks (cvss numeric, or a qualitative label).
+  if (best == null) {
+    const dsScore = parseCvssScore(vuln?.database_specific?.cvss?.score ?? vuln?.database_specific?.cvss);
+    if (dsScore != null) best = dsScore;
+  }
+  if (best != null) return scoreToSeverity(best);
+
+  const ds = vuln?.database_specific?.severity ?? vuln?.database_specific?.cvss?.severity;
   if (typeof ds === "string") {
     const u = ds.toUpperCase();
     if (u === "CRITICAL" || u === "HIGH") return { label: u.toLowerCase(), critical: true };
-    if (u === "MODERATE" || u === "MEDIUM" || u === "LOW") return { label: u.toLowerCase(), critical: false };
-  }
-  // CVSS vector → score bucket.
-  const sev = Array.isArray(vuln?.severity) ? vuln.severity : [];
-  for (const s of sev) {
-    const score = parseCvssScore(s?.score);
-    if (score != null) {
-      if (score >= 7) return { label: score >= 9 ? "critical" : "high", critical: true };
-      return { label: score >= 4 ? "moderate" : "low", critical: false };
-    }
+    if (u === "MODERATE" || u === "MEDIUM") return { label: "moderate", critical: false };
+    if (u === "LOW") return { label: "low", critical: false };
   }
   return { label: "moderate", critical: false };
 }
 
-function parseCvssScore(vector) {
-  if (typeof vector !== "string") return null;
-  if (/^\d+(\.\d+)?$/.test(vector)) return Number(vector);
-  return null; // full CVSS vector parsing is out of scope for v1
+// Accept a CVSS *vector* string (compute the 3.x base score) OR a bare numeric
+// score. Returns a number 0–10, or null if it can't be parsed.
+export function parseCvssScore(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  if (/^\d+(\.\d+)?$/.test(v)) return Number(v);
+  if (/^CVSS:3\.[01]\//i.test(v)) return cvss3BaseScore(v);
+  return null;
+}
+
+// CVSS v3.0/v3.1 base-score calculator from the vector string. Implements the
+// official base metric equations (FIRST.org CVSS v3.1 spec §7.1). Returns a
+// number 0–10 (1-decimal, round-up) or null if required metrics are missing.
+export function cvss3BaseScore(vector) {
+  const m = {};
+  for (const part of String(vector).split("/")) {
+    const [k, val] = part.split(":");
+    if (k && val) m[k.toUpperCase()] = val.toUpperCase();
+  }
+  const AV = { N: 0.85, A: 0.62, L: 0.55, P: 0.2 }[m.AV];
+  const PR_S = { N: 0.85, L: 0.62, H: 0.27 }; // scope unchanged
+  const PR_C = { N: 0.85, L: 0.68, H: 0.5 };  // scope changed
+  const UI = { N: 0.85, R: 0.62 }[m.UI];
+  const scopeChanged = m.S === "C";
+  const AC = { L: 0.77, H: 0.44 }[m.AC];
+  const PR = (scopeChanged ? PR_C : PR_S)[m.PR];
+  const imp = { N: 0, L: 0.22, H: 0.56 };
+  const C = imp[m.C], I = imp[m.I], A = imp[m.A];
+  if ([AV, AC, PR, UI, C, I, A].some((x) => x == null)) return null;
+
+  const iscBase = 1 - (1 - C) * (1 - I) * (1 - A);
+  const impact = scopeChanged
+    ? 7.52 * (iscBase - 0.029) - 3.25 * Math.pow(iscBase - 0.02, 15)
+    : 6.42 * iscBase;
+  const exploitability = 8.22 * AV * AC * PR * UI;
+  if (impact <= 0) return 0;
+  const raw = scopeChanged
+    ? Math.min(1.08 * (impact + exploitability), 10)
+    : Math.min(impact + exploitability, 10);
+  return roundUp1(raw);
+}
+
+// CVSS "Roundup": smallest 1-decimal number >= the input (spec §Appendix A).
+function roundUp1(x) {
+  const i = Math.round(x * 100000);
+  if (i % 10000 === 0) return i / 100000;
+  return (Math.floor(i / 10000) + 1) / 10;
 }
 
 // Minimal semver compare on major.minor.patch (ignores pre-release ordering).

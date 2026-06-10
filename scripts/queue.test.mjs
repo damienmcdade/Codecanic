@@ -39,7 +39,9 @@ try {
 
   const claimed = await repo.claimNextJob();
   ok("claim returns the job, marked running", claimed?.id === enq.id && claimed.status === "running");
-  ok("claimed job has attempts=1", (await repo.getJob(enq.id, org.id))?.attempts === 1);
+  // R8: claiming records a claim_count (not an error attempt) so a stale-requeued
+  // job doesn't burn its retry budget. attempts stays 0 until a real failure.
+  ok("claimed job has claim_count=1, attempts=0", (await repo.getJob(enq.id, org.id))?.claimCount === 1 && (await repo.getJob(enq.id, org.id))?.attempts === 0);
   ok("second claim returns null (no double-processing)", (await repo.claimNextJob()) === null);
 
   console.log("\nComplete / fail");
@@ -48,15 +50,16 @@ try {
   ok("completeJob sets succeeded + result", done.status === "succeeded" && done.result?.n === 42);
 
   // failJob re-queues transient failures until MAX_JOB_ATTEMPTS is reached, then
-  // marks the job permanently failed. (attempts is bumped by claimNextJob.)
+  // marks the job permanently failed. (R8: attempts is bumped by failJob, on a
+  // real error — not by claimNextJob.)
   const enq2 = await repo.enqueueJob({ type: "scan", organizationId: org.id, payload: {} });
-  await repo.claimNextJob();              // attempts = 1
-  await repo.failJob(enq2.id, "boom");
+  await repo.claimNextJob();              // claim (attempts still 0)
+  await repo.failJob(enq2.id, "boom");    // attempts = 1
   const retry1 = await repo.getJob(enq2.id, org.id);
   ok("failJob re-queues a transient failure", retry1.status === "queued" && /boom/.test(retry1.error));
   for (let i = 1; i < repo.MAX_JOB_ATTEMPTS; i++) {
-    await repo.claimNextJob();           // attempts = 2 ... MAX
-    await repo.failJob(enq2.id, "boom");
+    await repo.claimNextJob();           // re-claim
+    await repo.failJob(enq2.id, "boom");  // attempts = 2 ... MAX
   }
   const failed = await repo.getJob(enq2.id, org.id);
   ok("failJob sets failed + error after retries exhausted", failed.status === "failed" && /boom/.test(failed.error));

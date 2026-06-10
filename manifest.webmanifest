@@ -2,6 +2,8 @@
   "name": "Codecanic",
   "short_name": "Codecanic",
   "description": "Scan infrastructure, review code reports, and approve repairs.",
+  "id": "/",
+  "scope": "/",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#08111f",

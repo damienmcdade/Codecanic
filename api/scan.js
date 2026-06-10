@@ -1,7 +1,13 @@
-import { json, planFor, readBody, resolveOrgContext } from "./_lib.js";
+import { json, planFor, readBody, resolveOrgContext, ClientError } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { validateGitUrl } from "./_scanner.js";
 import { JOB_TYPES } from "./_jobs.js";
+import { logger } from "./_log.js";
+
+// Per-org enqueue rate limit (fixed window). Clone+scan+OSV+PR are expensive, so
+// cap the burst an org can queue per hour. Tunable via env.
+const SCAN_RATE_LIMIT = Number(process.env.CODECANIC_SCAN_RATE_LIMIT || 20);
+const SCAN_RATE_WINDOW_MS = Number(process.env.CODECANIC_SCAN_RATE_WINDOW_MS || 60 * 60 * 1000);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -37,6 +43,14 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Per-org enqueue rate limit (abuse / DoS bound, independent of the plan's
+    // monthly quota). Surfaces as a 429 with Retry-After.
+    const allowed = await repo.checkRateLimit(`scan:${context.organization.id}`, SCAN_RATE_LIMIT, SCAN_RATE_WINDOW_MS);
+    if (!allowed) {
+      res.setHeader("Retry-After", String(Math.ceil(SCAN_RATE_WINDOW_MS / 1000)));
+      throw new ClientError(`Too many scans queued. Limit is ${SCAN_RATE_LIMIT} per hour for this organization. Try again later.`, 429);
+    }
+
     // Free-plan monthly scan limit (Pro is unlimited + ad-free).
     const plan = planFor(context.organization.plan);
     if (plan.monthlyScanLimit != null) {
@@ -67,6 +81,9 @@ export default async function handler(req, res) {
 
     json(res, 202, { jobId: job.id, type: "scan", status: job.status, pollUrl: `/api/jobs/${job.id}` });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("scan.handler_error", { err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }

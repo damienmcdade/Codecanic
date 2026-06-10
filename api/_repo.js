@@ -95,8 +95,23 @@ export async function deleteUserAndSoleOwnedOrgs(userId) {
 }
 
 // --- organizations / memberships ------------------------------------------
+// Cap how many orgs a single user can create, to bound abuse (unbounded org
+// creation is a cheap way to fan out resources). Surfaced as a ClientError so
+// the handler returns the right status.
+export const MAX_ORGS_PER_USER = Number(process.env.CODECANIC_MAX_ORGS_PER_USER || 10);
+
 export async function createOrganizationForUser(name, baseSlug, userId) {
   return withTx(async (query) => {
+    const owned = (await query(
+      "SELECT count(*)::int AS n FROM memberships WHERE user_id=$1 AND role='owner'",
+      [userId]
+    ))[0]?.n ?? 0;
+    if (owned >= MAX_ORGS_PER_USER) {
+      const err = new Error(`Organization limit reached (${MAX_ORGS_PER_USER}). Delete an unused organization to create a new one.`);
+      err.expose = true;
+      err.statusCode = 409;
+      throw err;
+    }
     const slug = await uniqueSlug(query, baseSlug);
     const org = { id: randomUUID(), name, slug, plan: "Free", createdAt: new Date().toISOString() };
     await query("INSERT INTO organizations (id,name,slug,plan,created_at) VALUES ($1,$2,$3,$4,$5)",
@@ -203,10 +218,18 @@ export async function insertReport(report) {
       [report.id, report.organizationId, report.sourceUrl, report.createdAt,
        JSON.stringify(report.summary ?? null), JSON.stringify(report.findings ?? [])]
     );
+    // Retention: keep the newest N reports per org, but NEVER evict a report a
+    // queued/running repair job still depends on (executeRepair would 404).
     await query(
-      `DELETE FROM reports WHERE organization_id=$1 AND id NOT IN (
-         SELECT id FROM reports WHERE organization_id=$1 ORDER BY created_at DESC, id LIMIT $2
-       )`,
+      `DELETE FROM reports WHERE organization_id=$1
+         AND id NOT IN (
+           SELECT id FROM reports WHERE organization_id=$1 ORDER BY created_at DESC, id LIMIT $2
+         )
+         AND id::text NOT IN (
+           SELECT j.payload->>'reportId' FROM jobs j
+           WHERE j.type='repair' AND j.status IN ('queued','running')
+             AND j.payload->>'reportId' IS NOT NULL
+         )`,
       [report.organizationId, MAX_REPORTS_PER_ORG]
     );
   });
@@ -325,6 +348,52 @@ export async function setOrgPlan(organizationId, plan) {
   await q("UPDATE organizations SET plan=$2 WHERE id=$1", [organizationId, plan]);
 }
 
+// S1: webhook idempotency. Returns true the FIRST time an event id is seen
+// (side effects should run), false if it was already processed (replay → skip).
+export async function recordStripeEvent(eventId) {
+  const rows = await q(
+    "INSERT INTO stripe_events (id) VALUES ($1) ON CONFLICT (id) DO NOTHING RETURNING id",
+    [eventId]
+  );
+  return rows.length > 0;
+}
+
+// S2: bind the Stripe customer to the org so a later subscription.deleted (which
+// doesn't carry session metadata) can resolve the org by customer id.
+export async function setOrgStripeCustomer(organizationId, stripeCustomerId) {
+  if (!stripeCustomerId) return;
+  await q("UPDATE organizations SET stripe_customer_id=$2 WHERE id=$1", [organizationId, stripeCustomerId]);
+}
+
+export async function findOrgByStripeCustomer(stripeCustomerId) {
+  if (!stripeCustomerId) return null;
+  const rows = await q("SELECT * FROM organizations WHERE stripe_customer_id=$1", [stripeCustomerId]);
+  return mapOrg(rows[0]);
+}
+
+// S5: DB-backed fixed-window rate limit (same shape as login_attempts). Returns
+// true if the action is ALLOWED, false if the per-key limit for this window was
+// already reached. `key` should be caller-namespaced (e.g. `scan:<orgId>`).
+export async function checkRateLimit(key, limit, windowMs) {
+  return withTx(async (query) => {
+    const now = Date.now();
+    const cutoff = new Date(now - windowMs).toISOString();
+    const cur = (await query("SELECT window_start, count FROM org_rate_limits WHERE key=$1 FOR UPDATE", [key]))[0];
+    if (!cur || new Date(cur.window_start).getTime() < new Date(cutoff).getTime()) {
+      // No row, or the window has rolled over → start a fresh window at count 1.
+      await query(
+        `INSERT INTO org_rate_limits (key, window_start, count) VALUES ($1, now(), 1)
+         ON CONFLICT (key) DO UPDATE SET window_start=now(), count=1`,
+        [key]
+      );
+      return true;
+    }
+    if (cur.count >= limit) return false;
+    await query("UPDATE org_rate_limits SET count=count+1 WHERE key=$1", [key]);
+    return true;
+  });
+}
+
 export async function countScansThisMonth(organizationId) {
   const rows = await q(
     "SELECT count(*)::int AS n FROM jobs WHERE organization_id=$1 AND type='scan' AND created_at >= date_trunc('month', now())",
@@ -336,8 +405,9 @@ export async function countScansThisMonth(organizationId) {
 // --- background job queue --------------------------------------------------
 const mapJob = (r) => r && {
   id: r.id, type: r.type, status: r.status, organizationId: r.organization_id, userId: r.user_id,
-  payload: r.payload, result: r.result, error: r.error, attempts: r.attempts,
-  createdAt: iso(r.created_at), startedAt: iso(r.started_at), finishedAt: iso(r.finished_at)
+  payload: r.payload, result: r.result, error: r.error, attempts: r.attempts, claimCount: r.claim_count,
+  createdAt: iso(r.created_at), startedAt: iso(r.started_at), finishedAt: iso(r.finished_at),
+  heartbeatAt: iso(r.heartbeat_at)
 };
 
 export async function enqueueJob({ type, organizationId, userId, payload }) {
@@ -352,18 +422,31 @@ export async function enqueueJob({ type, organizationId, userId, payload }) {
 
 // Atomically claim the oldest queued job. FOR UPDATE SKIP LOCKED makes this
 // safe across concurrent workers / replicas (no job is processed twice).
+// R8: bump claim_count on every claim (observability / stale-requeue counter),
+// but DO NOT bump `attempts` here — attempts is the error/retry budget and is
+// only incremented on an actual failure (failJob), so a slow job that gets
+// stale-requeued once doesn't burn a retry. R2: stamp the initial heartbeat.
 export async function claimNextJob() {
   return withTx(async (query) => {
     const row = (await query(
       `SELECT * FROM jobs WHERE status='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`
     ))[0];
     if (!row) return null;
-    await query("UPDATE jobs SET status='running', started_at=now(), attempts=attempts+1 WHERE id=$1", [row.id]);
+    await query(
+      "UPDATE jobs SET status='running', started_at=now(), heartbeat_at=now(), claim_count=claim_count+1 WHERE id=$1",
+      [row.id]
+    );
     const job = mapJob(row);
     job.status = "running";
-    job.attempts = (row.attempts || 0) + 1;
+    job.claimCount = (row.claim_count || 0) + 1;
     return job;
   });
+}
+
+// R2: an active worker calls this periodically while a job runs so the stale
+// sweep can tell a legitimately-long job apart from a crashed one.
+export async function heartbeatJob(id) {
+  await q("UPDATE jobs SET heartbeat_at=now() WHERE id=$1 AND status='running'", [id]);
 }
 
 export async function completeJob(id, result) {
@@ -371,9 +454,10 @@ export async function completeJob(id, result) {
     [id, JSON.stringify(result ?? null)]);
 }
 
-// Max delivery attempts before a job is considered permanently failed. The
-// attempts counter is incremented in claimNextJob, so by the time we get here it
-// reflects how many times this job has been tried.
+// Max delivery attempts before a job is considered permanently failed. R8:
+// `attempts` counts ERRORS only — it is incremented here in failJob (a real
+// failure), NOT on claim — so a slow job that gets stale-requeued doesn't lose
+// retry budget. We increment-then-compare so the Nth failure is the last try.
 export const MAX_JOB_ATTEMPTS = Number(process.env.CODECANIC_MAX_JOB_ATTEMPTS || 3);
 
 export async function failJob(id, error) {
@@ -382,20 +466,28 @@ export async function failJob(id, error) {
   // MAX_JOB_ATTEMPTS; only mark permanently 'failed' once retries are exhausted.
   await q(
     `UPDATE jobs
-       SET status = CASE WHEN attempts < $2 THEN 'queued' ELSE 'failed' END,
-           started_at = CASE WHEN attempts < $2 THEN NULL ELSE started_at END,
-           finished_at = CASE WHEN attempts < $2 THEN NULL ELSE now() END,
+       SET attempts = attempts + 1,
+           status = CASE WHEN attempts + 1 < $2 THEN 'queued' ELSE 'failed' END,
+           started_at = CASE WHEN attempts + 1 < $2 THEN NULL ELSE started_at END,
+           finished_at = CASE WHEN attempts + 1 < $2 THEN NULL ELSE now() END,
+           heartbeat_at = CASE WHEN attempts + 1 < $2 THEN NULL ELSE heartbeat_at END,
            error = $3
      WHERE id = $1`,
     [id, MAX_JOB_ATTEMPTS, msg]
   );
 }
 
-// Re-queue jobs left 'running' by a crashed/restarted worker (or stuck too long).
+// Re-queue jobs left 'running' by a crashed/restarted worker. R2: gate on the
+// HEARTBEAT, not merely start time — a legitimately long scan keeps its
+// heartbeat fresh, so only a job whose worker has actually gone quiet (or that
+// never recorded a heartbeat and started long ago) is requeued.
 export async function requeueStaleJobs(staleMs) {
   const cutoff = new Date(Date.now() - staleMs).toISOString();
   const rows = await q(
-    "UPDATE jobs SET status='queued', started_at=NULL WHERE status='running' AND started_at < $1 RETURNING id",
+    `UPDATE jobs SET status='queued', started_at=NULL, heartbeat_at=NULL
+       WHERE status='running'
+         AND COALESCE(heartbeat_at, started_at) < $1
+     RETURNING id`,
     [cutoff]
   );
   return rows.length;

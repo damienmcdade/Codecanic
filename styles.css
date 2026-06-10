@@ -43,6 +43,36 @@
   outline: none;
 }
 
+/* WCAG 2.4.7 — always render a visible keyboard focus indicator. Scoped to
+   :focus-visible so it appears for keyboard/AT users without ringing every
+   mouse click. Applied broadly, then reinforced on custom-styled controls
+   whose backgrounds can swallow the default 2px ring. */
+:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[role="tab"]:focus-visible,
+[tabindex]:focus-visible,
+.link-button:focus-visible,
+.icon-button:focus-visible,
+.topbar nav a:focus-visible,
+.segmented button:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+/* The programmatic-focus suppression must still win for the main region. */
+#workspace-main:focus-visible {
+  outline: none;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -1683,8 +1713,8 @@ code {
 }
 
 .connect-stepper li.complete span {
-  background: rgba(20, 184, 166, 0.45);
-  color: #022c22;
+  background: rgba(13, 148, 136, 0.95);
+  color: #ffffff;
 }
 
 .connect-stepper li.complete span::before {
@@ -1748,8 +1778,8 @@ code {
 }
 
 .preflight li.ok .preflight-mark {
-  background: rgba(20, 184, 166, 0.35);
-  color: #022c22;
+  background: rgba(13, 148, 136, 0.95);
+  color: #ffffff;
 }
 
 .preflight li.todo {

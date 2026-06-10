@@ -42,10 +42,14 @@ async function checkout(req, res, context) {
     "line_items[0][quantity]": "1",
     client_reference_id: context.organization.id,
     "metadata[organizationId]": context.organization.id,
+    // S2: also stamp the org id on the SUBSCRIPTION (Stripe does NOT copy the
+    // Checkout Session metadata onto the subscription object), so a later
+    // customer.subscription.deleted webhook can resolve the org to downgrade.
+    "subscription_data[metadata][organizationId]": context.organization.id,
     success_url: `${appBaseUrl(req)}/?upgraded=1`,
     cancel_url: `${appBaseUrl(req)}/?upgrade=cancelled`
   });
-  const r = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+  const r = await fetchWithTimeout("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
     body: form
@@ -83,13 +87,47 @@ async function webhook(req, res) {
   }
   let event;
   try { event = JSON.parse(raw); } catch { json(res, 400, { error: "Invalid payload." }); return; }
+
+  // S1: idempotency. Record the event id first; if it was already processed
+  // (replay within the signature tolerance window), ack 200 WITHOUT re-running
+  // side effects. Events without an id (shouldn't happen) skip the gate.
+  if (event.id) {
+    let firstSeen;
+    try {
+      firstSeen = await repo.recordStripeEvent(event.id);
+    } catch (err) {
+      logger.error("billing.event_record_failed", { err });
+      json(res, 500, { error: "Webhook processing error." });
+      return;
+    }
+    if (!firstSeen) {
+      logger.info("billing.event_replayed", { eventId: event.id, type: event.type });
+      json(res, 200, { received: true });
+      return;
+    }
+  }
+
   try {
     if (event.type === "checkout.session.completed") {
-      const orgId = event.data?.object?.metadata?.organizationId || event.data?.object?.client_reference_id;
-      if (orgId) { await repo.setOrgPlan(orgId, "Pro"); logger.info("billing.upgraded", { orgId }); }
+      const obj = event.data?.object || {};
+      const orgId = obj.metadata?.organizationId || obj.client_reference_id;
+      if (orgId) {
+        await repo.setOrgPlan(orgId, "Pro");
+        // S2: persist the Stripe customer so subscription.deleted can resolve the
+        // org even though Stripe won't echo the session metadata there.
+        if (obj.customer) { try { await repo.setOrgStripeCustomer(orgId, obj.customer); } catch (err) { logger.error("billing.customer_link_failed", { err }); } }
+        logger.info("billing.upgraded", { orgId });
+      }
     } else if (event.type === "customer.subscription.deleted") {
-      const orgId = event.data?.object?.metadata?.organizationId;
+      const obj = event.data?.object || {};
+      // S2: prefer subscription metadata; fall back to resolving by customer id.
+      let orgId = obj.metadata?.organizationId;
+      if (!orgId && obj.customer) {
+        const org = await repo.findOrgByStripeCustomer(obj.customer);
+        orgId = org?.id || null;
+      }
       if (orgId) { await repo.setOrgPlan(orgId, "Free"); logger.info("billing.downgraded", { orgId }); }
+      else logger.warn("billing.downgrade_unresolved", { customer: obj.customer || null });
     }
   } catch (err) {
     logger.error("billing.webhook_error", { err });
@@ -112,6 +150,9 @@ export default async function handler(req, res) {
     if (action === "checkout" && req.method === "POST") return await checkout(req, res, context);
     json(res, 404, { error: "Unknown billing action" });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("billing.handler_error", { action, err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }

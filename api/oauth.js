@@ -3,7 +3,9 @@ import { getConnector, json, readBody, signState, verifyState, appBaseUrl, orgFr
 import * as repo from "./_repo.js";
 import { currentUserContext } from "./_auth.js";
 import { encryptSecret } from "./_crypto.js";
-import { githubAppConfigured } from "./_github.js";
+import { githubAppConfigured, getInstallation } from "./_github.js";
+import { fetchWithTimeout } from "./_http.js";
+import { logger } from "./_log.js";
 
 const manualProviders = new Set(["Railway", "Xcode"]);
 
@@ -117,7 +119,7 @@ async function exchangeCode(provider, code, req) {
     headers["Content-Type"] = "application/x-www-form-urlencoded";
   }
 
-  const response = await fetch(exchange.url, { method: "POST", headers, body: params.toString() });
+  const response = await fetchWithTimeout(exchange.url, { method: "POST", headers, body: params.toString() });
   const text = await response.text();
   let data;
   try {
@@ -350,12 +352,32 @@ async function githubAppStart(req, res) {
   json(res, 200, { configured: true, installUrl });
 }
 
+// Resolve the GitHub login connected to an org via its stored OAuth credential
+// (used to verify a reported installation actually belongs to that account).
+// Returns a lowercased login, or null if not resolvable.
+async function connectedGithubLogin(organizationId) {
+  try {
+    const cred = await repo.findConnectorCred("GitHub", organizationId);
+    if (!cred?.accessToken) return null;
+    const token = decryptSecret(cred.accessToken);
+    const r = await fetchWithTimeout("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "Codecanic" }
+    });
+    if (!r.ok) return null;
+    const data = await r.json().catch(() => ({}));
+    return data?.login ? String(data.login).toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 // GitHub redirects here (the App's Setup URL) after install with installation_id.
 async function githubAppCallback(req, res) {
   const url = requestUrl(req);
   const installationId = url.searchParams.get("installation_id");
   const payload = verifyState(url.searchParams.get("state"));
-  if (!payload || payload.kind !== "github-app" || !installationId) {
+  // S4: installation_id is attacker-supplied in the query — it must be numeric.
+  if (!payload || payload.kind !== "github-app" || !installationId || !/^\d+$/.test(installationId)) {
     sendHtml(res, 400, renderHtml("GitHub App setup failed", "This link is invalid or expired. Start the connection again.", { provider: "GitHub", success: false, nonce: req.cspNonce }));
     return;
   }
@@ -363,6 +385,30 @@ async function githubAppCallback(req, res) {
     sendHtml(res, 403, renderHtml("Access denied", "You no longer have access to that organization.", { provider: "GitHub", success: false, nonce: req.cspNonce }));
     return;
   }
+
+  // S4: verify ownership before storing. Look up the installation with the App
+  // JWT and confirm its account matches the GitHub login connected to this org.
+  // We only REJECT on a definite mismatch; if either side can't be resolved
+  // (App JWT unavailable, or no OAuth cred to compare), we accept the numeric id
+  // (the install flow itself is gated by signed state + org membership).
+  try {
+    const installation = await getInstallation(installationId);
+    const installLogin = installation?.account?.login ? String(installation.account.login).toLowerCase() : null;
+    if (installLogin) {
+      const orgLogin = await connectedGithubLogin(payload.organizationId);
+      if (orgLogin && orgLogin !== installLogin) {
+        logger.warn("oauth.github_app_owner_mismatch", { organizationId: payload.organizationId, installLogin, orgLogin });
+        sendHtml(res, 403, renderHtml("GitHub App setup failed", "This installation belongs to a different GitHub account than the one connected to this workspace.", { provider: "GitHub", success: false, nonce: req.cspNonce }));
+        return;
+      }
+    }
+  } catch (err) {
+    // App-JWT lookup not feasible (App not configured / network) — fall back to
+    // the numeric check + signed-state gate above. TODO: once every org has a
+    // connected OAuth login on file, make ownership verification mandatory.
+    logger.warn("oauth.github_app_verify_skipped", { err: String(err?.message || err) });
+  }
+
   await repo.setGithubInstallation(payload.organizationId, installationId);
   sendHtml(res, 200, renderHtml("GitHub App connected", "Codecanic can now access only the repositories you selected. Your code is never stored.", { provider: "GitHub", success: true, nonce: req.cspNonce }));
 }
@@ -380,6 +426,9 @@ export default async function handler(req, res) {
     if (action === "github-app-callback" && req.method === "GET") return await githubAppCallback(req, res);
     json(res, 404, { error: "Unknown oauth action" });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("oauth.handler_error", { action, err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }

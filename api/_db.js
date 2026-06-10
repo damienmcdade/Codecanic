@@ -107,6 +107,15 @@ CREATE TABLE IF NOT EXISTS github_installations (
   installation_id text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS stripe_events (
+  id text PRIMARY KEY,
+  processed_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS org_rate_limits (
+  key text PRIMARY KEY,
+  window_start timestamptz NOT NULL DEFAULT now(),
+  count integer NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_jobs_queued ON jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_org ON jobs(organization_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_suppressions_org ON suppressions(organization_id);
@@ -119,6 +128,16 @@ CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id, kind);
 
 -- Additive migrations (idempotent) for existing deployments.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false;
+-- R2: per-job heartbeat so the requeue sweep only resurrects jobs whose worker
+-- has actually gone quiet (not legitimately-long-running scans).
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS heartbeat_at timestamptz;
+-- R8: decouple "how many times claimed" from the retry/error budget so a
+-- stale-requeued-but-fine job doesn't burn an attempt.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS claim_count integer NOT NULL DEFAULT 0;
+-- S2: stash the Stripe customer id at checkout so a subscription.deleted webhook
+-- (which doesn't echo session metadata) can still resolve the org to downgrade.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_customer_id text;
+CREATE INDEX IF NOT EXISTS idx_orgs_stripe_customer ON organizations(stripe_customer_id);
 `;
 
 let backend = null; // { kind, q, withTx, close, truncate }

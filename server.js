@@ -140,14 +140,29 @@ function originAllowed(req) {
   const host = req.headers.host || "";
   const expectedHost = host.split(":")[0];
   const originHost = parsed.hostname;
+  // Same-origin (the request hit us on the host the browser sent it to).
   if (originHost === expectedHost) return true;
+  // Explicit env-driven allowlist (exact origins, e.g. a custom apex/staging).
   const allowList = (process.env.CODECANIC_ALLOWED_ORIGINS || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
   if (allowList.includes(parsed.origin)) return true;
-  if (originHost === "codecanic.app") return true;
-  if (originHost.endsWith(".vercel.app") && originHost.includes("codecanic")) return true;
+  // Production apex + www.
+  if (originHost === "codecanic.app" || originHost === "www.codecanic.app") return true;
+  // Vercel preview deployments. The previous check (endsWith ".vercel.app" &&
+  // includes "codecanic") accepted attacker hosts like "codecanic-evil.vercel.app".
+  // Because Vercel preview hostnames embed a per-deploy hash + team scope that
+  // can't be safely pattern-matched, preview origins are OFF by default — add the
+  // exact preview origin(s) to CODECANIC_ALLOWED_ORIGINS instead. Set
+  // CODECANIC_VERCEL_PROJECT to opt into matching that project's preview prefix
+  // (still an explicit, deployment-scoped choice — not a blanket *.vercel.app).
+  const vercelProject = (process.env.CODECANIC_VERCEL_PROJECT || "").trim().toLowerCase();
+  if (vercelProject && originHost.endsWith(".vercel.app")) {
+    // Match "<project>-<hash>[-<scope>].vercel.app" or "<project>.vercel.app".
+    if (originHost === `${vercelProject}.vercel.app` ||
+        originHost.startsWith(`${vercelProject}-`)) return true;
+  }
   return false;
 }
 
@@ -197,6 +212,13 @@ const server = createServer(async (req, res) => {
 
   if (req.method !== "GET" && req.method !== "HEAD") {
     send(res, 405, "Method not allowed");
+    return;
+  }
+
+  // S7: an unmatched /api/* path is a real 404 — never fall through to the SPA
+  // index.html (which would 200 a bogus API GET and confuse clients/crawlers).
+  if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+    send(res, 404, JSON.stringify({ error: "Not found." }), "application/json; charset=utf-8");
     return;
   }
 

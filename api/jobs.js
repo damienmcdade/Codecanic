@@ -1,5 +1,6 @@
 import { json, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
+import { logger } from "./_log.js";
 
 // GET /api/jobs            → recent jobs for the active organization
 // GET /api/jobs/<id>       → one job (status, and result/error when finished)
@@ -45,6 +46,9 @@ export default async function handler(req, res) {
       error: job.status === "failed" ? job.error : undefined
     });
   } catch (error) {
-    json(res, 400, { error: error.message });
+    const expose = error?.expose === true;
+    const statusCode = expose ? error.statusCode || 400 : 500;
+    if (!expose) logger.error("jobs.handler_error", { err: error });
+    json(res, statusCode, { error: expose ? error.message : "Request failed." });
   }
 }
