@@ -554,7 +554,7 @@ const legalText = {
   privacy: `
     <h3>Privacy Policy</h3>
     <p class="muted">Last updated: 2026-05-26. Version 2.</p>
-    <p>This policy describes what data Codecanic collects, why, where it goes, and how long we keep it. We are the data controller for the personal data described below. For any request — access, deletion, correction, complaint — email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>. We respond within 30 days as required by GDPR Article 12(3).</p>
+    <p>This policy describes what data Codecanic collects, why, where it goes, and how long we keep it. We are the data controller for the personal data described below. For any request — access, deletion, correction, complaint — email <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>. We respond within 30 days as required by GDPR Article 12(3).</p>
 
     <h4>1. What we collect and why</h4>
     <table class="legal-table"><tbody>
@@ -594,13 +594,13 @@ const legalText = {
     </tbody></table>
 
     <h4>5. International data transfers</h4>
-    <p>Codecanic is hosted in the United States. If you access the service from the EEA, UK, or Switzerland, your personal data is transferred to the US. We rely on the European Commission Standard Contractual Clauses (Module 2, Controller-to-Processor) with each subprocessor named above, and on each subprocessor's published Data Processing Addendum. Copies are available on request to <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.</p>
+    <p>Codecanic is hosted in the United States. If you access the service from the EEA, UK, or Switzerland, your personal data is transferred to the US. We rely on the European Commission Standard Contractual Clauses (Module 2, Controller-to-Processor) with each subprocessor named above, and on each subprocessor's published Data Processing Addendum. Copies are available on request to <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>.</p>
 
     <h4>6. Your rights</h4>
     <ul>
       <li><strong>Access and portability (Art. 15 + 20):</strong> click <em>Download my data</em> in your account card. Format: JSON. Tokens are redacted to <code>***redacted***</code> for safety; if you need the original tokens, fetch them yourself from the provider before exporting.</li>
       <li><strong>Erasure (Art. 17):</strong> click <em>Delete account</em>. Your user record, sessions, sole-owned organizations, and every connector credential are removed immediately and permanently. There are no soft-delete backups; nothing is retained after the action completes.</li>
-      <li><strong>Rectification (Art. 16):</strong> email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a> with corrections.</li>
+      <li><strong>Rectification (Art. 16):</strong> email <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a> with corrections.</li>
       <li><strong>Restriction / objection (Art. 18 + 21):</strong> email us. For processing based on legitimate interest you can object at any time.</li>
       <li><strong>Consent withdrawal:</strong> click <em>Manage cookies</em> in your account card to switch ad consent off, or unsubscribe from any future marketing email we send.</li>
       <li><strong>Lodge a complaint:</strong> you can complain to your local supervisory authority. In the EU, find yours at <a href="https://edpb.europa.eu/about-edpb/about-edpb/members_en" target="_blank" rel="noopener noreferrer">edpb.europa.eu</a>. In the UK, the ICO (<a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer">ico.org.uk</a>).</li>
@@ -631,19 +631,19 @@ const legalText = {
     <p><strong>Breach notification</strong>: if we discover a personal data breach we will notify the relevant supervisory authority within 72 hours (GDPR Art. 33). If the breach is likely to result in high risk to your rights or freedoms we will notify affected users without undue delay (Art. 34).</p>
 
     <h4>9. Children</h4>
-    <p>Codecanic is not directed to children under 16. We require explicit age confirmation at signup. If we learn that an account belongs to a child under 16 we will delete it and remove all associated data. To report such an account, email <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.</p>
+    <p>Codecanic is not directed to children under 16. We require explicit age confirmation at signup. If we learn that an account belongs to a child under 16 we will delete it and remove all associated data. To report such an account, email <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>.</p>
 
     <h4>10. Automated decision-making</h4>
     <p>Scan findings and proposed repairs are produced by deterministic rules and pattern matchers. We do not currently use machine-learning models that profile you or make automated decisions producing legal effects. If that changes we will update this policy and notify you.</p>
 
     <h4>11. Accessibility</h4>
-    <p>Codecanic aims to meet WCAG 2.1 AA where practical. The dashboard supports keyboard navigation, screen-reader-compatible ARIA labels on interactive controls, sufficient color contrast, and respects <code>prefers-reduced-motion</code> for animations. We have not yet completed a formal accessibility audit. Report accessibility barriers to <a href="mailto:accessibility@codecanic.app">accessibility@codecanic.app</a>; we will acknowledge within 5 business days.</p>
+    <p>Codecanic aims to meet WCAG 2.1 AA where practical. The dashboard supports keyboard navigation, screen-reader-compatible ARIA labels on interactive controls, sufficient color contrast, and respects <code>prefers-reduced-motion</code> for animations. We have not yet completed a formal accessibility audit. Report accessibility barriers to <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>; we will acknowledge within 5 business days.</p>
 
     <h4>12. Changes</h4>
     <p>If we make material changes to this policy we will display a banner on first sign-in after the change and update the "Last updated" date above. Continued use after the effective date constitutes acceptance.</p>
 
     <h4>13. Contact</h4>
-    <p>Privacy / data requests: <a href="mailto:privacy@codecanic.app">privacy@codecanic.app</a>.<br>Accessibility: <a href="mailto:accessibility@codecanic.app">accessibility@codecanic.app</a>.<br>Security disclosure: <a href="mailto:security@codecanic.app">security@codecanic.app</a>.<br>Trust + safety: <a href="mailto:abuse@codecanic.app">abuse@codecanic.app</a>.</p>
+    <p>Privacy / data requests: <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>.<br>Accessibility: <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>.<br>Security disclosure: <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>.<br>Trust + safety: <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>.</p>
   `,
   terms: `
     <h3>Terms of Service</h3>
@@ -657,7 +657,7 @@ const legalText = {
     <p>You must be at least 16 years old and able to enter a binding contract. You may use the Service on behalf of a company; if so, you represent that you have authority to bind that company.</p>
 
     <h4>3. Your account</h4>
-    <p>You are responsible for keeping your password secure and for everything that happens under your account. Notify us at <a href="mailto:security@codecanic.app">security@codecanic.app</a> immediately if you suspect unauthorized access.</p>
+    <p>You are responsible for keeping your password secure and for everything that happens under your account. Notify us at <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a> immediately if you suspect unauthorized access.</p>
 
     <h4>4. Acceptable Use Policy (AUP)</h4>
     <p>You agree NOT to:</p>
@@ -681,7 +681,7 @@ const legalText = {
 
     <h4>7. Intellectual property and DMCA</h4>
     <p>Codecanic and the Service are owned by us and protected by IP laws. The trademarks, logos, and service marks displayed on Codecanic are our property or the property of their respective owners and may not be used without permission.</p>
-    <p><strong>DMCA — Digital Millennium Copyright Act (US 17 U.S.C. § 512)</strong>: if you believe content on Codecanic infringes your copyright, send a notice to our designated agent at <a href="mailto:dmca@codecanic.app">dmca@codecanic.app</a> including:</p>
+    <p><strong>DMCA — Digital Millennium Copyright Act (US 17 U.S.C. § 512)</strong>: if you believe content on Codecanic infringes your copyright, send a notice to our designated agent at <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a> including:</p>
     <ol>
       <li>Your physical or electronic signature.</li>
       <li>Identification of the copyrighted work claimed to have been infringed.</li>
@@ -708,7 +708,7 @@ const legalText = {
     <p>You agree to indemnify and hold Codecanic harmless from any claim, demand, loss, or expense (including reasonable legal fees) arising from your violation of these terms, your AUP violations, or your infringement of any third-party right (including IP rights) through your use of the Service.</p>
 
     <h4>13. Governing law and dispute resolution</h4>
-    <p>These terms are governed by the laws of the jurisdiction in which Codecanic is principally operated, without regard to its conflict-of-law rules. Before bringing any claim, you agree to first contact us at <a href="mailto:legal@codecanic.app">legal@codecanic.app</a> and attempt good-faith resolution for at least 30 days. If unresolved, any dispute will be brought in the small-claims court of competent jurisdiction or, at either party's election, before a neutral arbitrator under the rules of a recognized arbitration body. Class actions are waived to the extent permitted by law. Nothing in this section prevents you from exercising any non-waivable consumer rights under your local law.</p>
+    <p>These terms are governed by the laws of the jurisdiction in which Codecanic is principally operated, without regard to its conflict-of-law rules. Before bringing any claim, you agree to first contact us at <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a> and attempt good-faith resolution for at least 30 days. If unresolved, any dispute will be brought in the small-claims court of competent jurisdiction or, at either party's election, before a neutral arbitrator under the rules of a recognized arbitration body. Class actions are waived to the extent permitted by law. Nothing in this section prevents you from exercising any non-waivable consumer rights under your local law.</p>
 
     <h4>14. Severability + entire agreement</h4>
     <p>If any provision of these terms is held unenforceable, the remaining provisions remain in force. These terms (together with the Privacy Policy) constitute the entire agreement between you and Codecanic regarding the Service and supersede any prior agreements.</p>
