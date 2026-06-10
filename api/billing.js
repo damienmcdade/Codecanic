@@ -1,12 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { json, entitlements, planFor, resolveOrgContext, appBaseUrl } from "./_lib.js";
+import { json, entitlements, planFor, resolveOrgContext } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { logger } from "./_log.js";
-import { fetchWithTimeout } from "./_http.js";
 
-// Codecanic stays free + ad-supported; Pro is an optional paid upgrade
-// (ad-free + unlimited scans). Stripe is used when configured; without keys,
-// checkout reports "not configured" rather than failing.
+// Codecanic is sponsor-supported and open to every team at no cost — there is
+// no paid tier. The checkout path is disabled (it never creates a Stripe
+// session); the webhook handler is retained only to gracefully ack any legacy
+// Stripe events and downgrade the internal plan flag if one ever arrives.
 function billingConfigured() {
   return Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRO_PRICE_ID);
 }
@@ -31,36 +31,13 @@ async function status(req, res, context) {
   });
 }
 
-async function checkout(req, res, context) {
-  if (!billingConfigured()) {
-    json(res, 200, { configured: false, message: "Billing is not configured on this deployment." });
-    return;
-  }
-  // Create a Stripe Checkout Session via the REST API (no SDK dependency).
-  const form = new URLSearchParams({
-    mode: "subscription",
-    "line_items[0][price]": process.env.STRIPE_PRO_PRICE_ID,
-    "line_items[0][quantity]": "1",
-    client_reference_id: context.organization.id,
-    "metadata[organizationId]": context.organization.id,
-    // S2: also stamp the org id on the SUBSCRIPTION (Stripe does NOT copy the
-    // Checkout Session metadata onto the subscription object), so a later
-    // customer.subscription.deleted webhook can resolve the org to downgrade.
-    "subscription_data[metadata][organizationId]": context.organization.id,
-    success_url: `${appBaseUrl(req)}/?upgraded=1`,
-    cancel_url: `${appBaseUrl(req)}/?upgrade=cancelled`
-  });
-  const r = await fetchWithTimeout("https://api.stripe.com/v1/checkout/sessions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: form
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    json(res, 502, { error: `Stripe checkout failed (${r.status}): ${data.error?.message || "unknown"}` });
-    return;
-  }
-  json(res, 200, { url: data.url });
+async function checkout(_req, res) {
+  // Codecanic is sponsor-supported and open to every team at no cost — there is
+  // no paid tier, so the checkout path is disabled and never creates a Stripe
+  // session. No payment information is ever collected (keeps the privacy/terms
+  // "we do not process payments" statements truthful). The webhook handler
+  // below is retained only to gracefully ack any legacy Stripe events.
+  json(res, 200, { configured: false, message: "Codecanic is open to every team at no cost — there is no paid tier." });
 }
 
 // Verify Stripe's webhook signature: v1 = HMAC-SHA256(`${t}.${rawBody}`, secret).

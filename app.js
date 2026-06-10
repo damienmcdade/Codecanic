@@ -290,26 +290,10 @@ function renderAccount() {
   applyPlanUI();
 }
 
-// Pro orgs are ad-free; Free orgs see ads + an upgrade prompt.
+// Codecanic is sponsor-supported and open to every team — there is no paid
+// tier and no account upgrade, so the sponsor ad slots are shown for everyone.
 function applyPlanUI() {
-  const org = activeOrg();
-  const isPro = !!session.user && org?.plan === "Pro";
-  document.querySelectorAll(".ad-slot").forEach((el) => { el.hidden = isPro; });
-  document.body.classList.toggle("is-pro", isPro);
-  const upgrade = document.querySelector("#upgrade-pro");
-  if (upgrade) upgrade.hidden = !session.user || isPro;
-  const planLine = document.querySelector("#plan-line");
-  if (planLine) planLine.textContent = session.user && org ? (isPro ? "Plan: Pro (ad-free)" : "Plan: Free") : "";
-}
-
-async function upgradeToPro() {
-  try {
-    const data = await api("/api/billing/checkout", { method: "POST", body: "{}" });
-    if (data.url) { window.location.href = data.url; return; }
-    showToast(data.message || "Upgrades aren't available yet.");
-  } catch (error) {
-    showToast(error.message || "Could not start the upgrade.");
-  }
+  document.querySelectorAll(".ad-slot").forEach((el) => { el.hidden = false; });
 }
 
 function renderAll() {
@@ -579,7 +563,6 @@ const legalText = {
       <tr><td>Organizations and roles</td><td>Workspace ownership and access control</td><td>Contract</td><td>Until you delete account or leave the organization</td></tr>
       <tr><td>OAuth access tokens (GitHub, Vercel, GitLab, Bitbucket) and manual tokens (Railway, Xcode)</td><td>Run scans and propose repairs on your authorization</td><td>Contract</td><td>Until you disconnect the provider, leave the org, or delete account; deletion is immediate and cascades</td></tr>
       <tr><td>Scan reports and repair queue entries</td><td>Show you findings, let you approve fixes</td><td>Contract</td><td>Until you delete account or remove report</td></tr>
-      <tr><td>Stripe customer / subscription ID and plan status (only if you upgrade to Pro; full card details are held by Stripe, never by us)</td><td>Apply the optional ad-free benefit, manage and cancel the subscription</td><td>Contract (Art. 6(1)(b))</td><td>Until you cancel and delete your account; billing records kept as legally required</td></tr>
       <tr><td>Signed session cookie <code>codecanic_session</code> (HttpOnly, Secure, SameSite=Strict)</td><td>Identify your authenticated browser</td><td>Contract — strictly necessary</td><td>14 days from issue, refreshed on activity</td></tr>
       <tr><td>Acceptance timestamps for Terms + Privacy Policy</td><td>Demonstrate informed consent</td><td>Legal obligation (Art. 6(1)(c))</td><td>Life of the account + 6 years</td></tr>
       <tr><td>Marketing opt-in flag</td><td>Honor your email preference (we do not currently send any marketing emails)</td><td>Consent (Art. 6(1)(a))</td><td>Until you delete account or opt out</td></tr>
@@ -598,11 +581,8 @@ const legalText = {
     <p>If you select <strong>Essential only</strong> on the cookie banner the AdSense script is not loaded at all — no Google cookies are set, no requests are made to Google ad servers, and the sponsor slots remain blank.</p>
 
     <h4>3. Advertising</h4>
-    <p>Codecanic is free to use and supported by ads served by Google AdSense (publisher <code>ca-pub-8731629548430880</code>). An optional paid <strong>Pro (ad-free)</strong> subscription removes these ads; see "Payments and the optional Pro subscription" below. When you accept ad cookies, Google may receive your approximate location, device, IP-derived signals, and AdSense cookie identifiers to deliver and measure personalized or non-personalized ads. Manage your Google ad preferences at <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">adssettings.google.com</a>. Google's privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a>.</p>
+    <p>Codecanic is open to every team at no cost and supported by ads served by Google AdSense (publisher <code>ca-pub-8731629548430880</code>). When you accept ad cookies, Google may receive your approximate location, device, IP-derived signals, and AdSense cookie identifiers to deliver and measure personalized or non-personalized ads. Manage your Google ad preferences at <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">adssettings.google.com</a>. Google's privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a>.</p>
     <p>EEA / UK / Swiss users: when consent is required, Google's IAB TCF v2.2 prompt may also appear before personalized ads are served. You can withdraw consent at any time by clicking <strong>Manage cookies</strong> in your account card.</p>
-
-    <h4>Payments and the optional Pro subscription</h4>
-    <p>The core Service is free. We also offer an optional paid <strong>Pro (ad-free)</strong> subscription that removes the sponsor ad slots. Payments are processed by <strong>Stripe, Inc.</strong> When you upgrade, your payment-card details are collected and handled directly by Stripe under its own <a href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer">privacy policy</a> — <strong>Codecanic never receives or stores your full card number, CVC, or expiry</strong>. We retain only a Stripe customer / subscription identifier and your plan status so we can apply the ad-free benefit and let you manage or cancel the subscription.</p>
 
     <h4>4. Subprocessors (third parties that process data on our behalf)</h4>
     <table class="legal-table"><tbody>
@@ -610,7 +590,6 @@ const legalText = {
       <tr><td>Vercel Inc.</td><td>Static frontend hosting (codecanic.app) and edge proxy for <code>/api/*</code></td><td>USA</td></tr>
       <tr><td>Railway Corp.</td><td>API hosting and persistent data store</td><td>USA (US West region)</td></tr>
       <tr><td>Google LLC (AdSense)</td><td>Sponsor ad delivery — only after you opt in</td><td>USA</td></tr>
-      <tr><td>Stripe, Inc.</td><td>Payment processing for the optional Pro (ad-free) subscription — only if you upgrade</td><td>USA</td></tr>
       <tr><td>GitHub, GitLab, Bitbucket, Vercel, Railway, Apple Developer (when you connect them)</td><td>OAuth identity and the read scopes you grant for each scan</td><td>USA / EEA depending on provider</td></tr>
     </tbody></table>
 
@@ -672,7 +651,7 @@ const legalText = {
     <p>By creating an account or using Codecanic ("the Service") you agree to these terms. If you do not agree, do not use the Service.</p>
 
     <h4>1. The Service</h4>
-    <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The Service is free to use and supported by sponsor advertising. An optional paid "Pro (ad-free)" subscription is available if you prefer an ad-free experience; it is not required to scan a repository or open repair pull requests. You retain ownership of your code, your provider accounts, and any data you submit.</p>
+    <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The Service is open to every team at no cost and supported by sponsor advertising; there is no paid tier. You retain ownership of your code, your provider accounts, and any data you submit.</p>
 
     <h4>2. Eligibility</h4>
     <p>You must be at least 16 years old and able to enter a binding contract. You may use the Service on behalf of a company; if so, you represent that you have authority to bind that company.</p>
@@ -689,7 +668,7 @@ const legalText = {
       <li>Overload, flood, spam, denial-of-service, or otherwise interfere with the Service or other users.</li>
       <li>Use the Service to develop, train, or evaluate a competing product without our written permission.</li>
       <li>Upload, scan, or generate repairs for malicious code, malware, stalkerware, illegal content (CSAM, copyrighted material you do not own, sanctioned-party content), or content that infringes third-party rights.</li>
-      <li>Bypass the consent or paywall mechanisms or attempt to access another user's data.</li>
+      <li>Bypass the consent mechanisms or attempt to access another user's data.</li>
       <li>Use the Service in violation of any applicable export control, sanctions, or trade law (including OFAC and EU sanctions).</li>
     </ul>
     <p>Violations may result in immediate suspension and, where appropriate, referral to law enforcement.</p>
@@ -713,8 +692,8 @@ const legalText = {
     </ol>
     <p>Counter-notices may be sent to the same address. We may terminate repeat infringers per our DMCA policy.</p>
 
-    <h4>8. Cost, ads, and the optional Pro subscription</h4>
-    <p>The core Service is free to use and supported by ads delivered via Google AdSense; see the Privacy Policy for ad details and your consent controls. We also offer an optional paid <strong>Pro (ad-free)</strong> subscription that removes the sponsor ad slots. If you choose to upgrade, payment is processed by our payment provider, <strong>Stripe, Inc.</strong> Stripe collects and handles your payment-card information directly under its own terms and privacy policy; Codecanic does not receive or store your full card details. You may cancel at any time, and Pro is never required to scan a repository or open repair pull requests.</p>
+    <h4>8. Cost and ads</h4>
+    <p>The Service is open to every team at no cost and supported by ads delivered via Google AdSense; see the Privacy Policy for ad details and your consent controls. There is no paid tier and no account upgrade — every team has the same full feature set, including scanning repositories and opening repair pull requests. We do not collect or process any payment information from you.</p>
 
     <h4>9. Suspension and termination</h4>
     <p>You may delete your account at any time via the dashboard. We may suspend or terminate your access (with or without notice) if you violate these terms, applicable law, or our AUP. On termination, sections 7, 9, 10, 11, 12, 13, and 14 survive.</p>
@@ -1610,7 +1589,6 @@ document.addEventListener("click", (event) => {
   if (target.id === "auth-close") closeAuthModal();
   if (target.id === "sign-out-button") signOut();
   if (target.id === "new-org-button") createOrganization();
-  if (target.id === "upgrade-pro") upgradeToPro();
   if (target.id === "delete-account-button") openDeleteAccountModal();
   if (target.id === "delete-close" || target.id === "delete-cancel") closeDeleteAccountModal();
   if (target.id === "delete-submit") submitDeleteAccount();

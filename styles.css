@@ -2007,14 +2007,6 @@ code {
   text-align: center;
 }
 
-/* Plan line in the account card */
-.plan-line {
-  margin: 8px 0 4px;
-  font-size: 0.82rem;
-  color: var(--muted, #94a3b8);
-}
-body.is-pro .ad-slot { display: none; }
-
 /* Public editorial content sections (How it works / What we scan / FAQ).
    Crawlable prose shown to every visitor without sign-in. */
 .content-panel { line-height: 1.6; }

@@ -50,7 +50,7 @@ for (const mod of apiModules) {
 }
 
 const html = await readFile("index.html", "utf8");
-for (const marker of ["Codecanic", "Connectors", "Findings report", "Free for everyone", "Sponsor-supported"]) {
+for (const marker of ["Codecanic", "Connectors", "Findings report", "Open to every team", "Sponsor-supported"]) {
   if (!html.includes(marker)) {
     throw new Error(`Missing expected UI marker: ${marker}`);
   }
