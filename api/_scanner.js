@@ -76,7 +76,17 @@ export function validateGitUrl(sourceUrl) {
   if (segments.length < 2) {
     throw new Error("Repository URL must include an owner and repository name.");
   }
-  return { host, owner: segments[0], repo: segments[1].replace(/\.git$/, ""), cleanUrl: `https://${host}${path}` };
+  const owner = segments[0];
+  const repo = segments[1].replace(/\.git$/, "");
+  // Harden: owner/repo flow into the GitHub API URL for PR creation
+  // (api.github.com/repos/${owner}/${repo}/pulls). Reject anything that
+  // isn't a plain provider slug so percent-encoded path-traversal
+  // (`..%2f..`) or CRLF (`repo%0d%0aHost:`) can't ride into that URL.
+  const SLUG = /^[A-Za-z0-9._-]+$/;
+  if (!SLUG.test(owner) || !SLUG.test(repo)) {
+    throw new Error("Repository owner and name may only contain letters, numbers, dots, underscores, and hyphens.");
+  }
+  return { host, owner, repo, cleanUrl: `https://${host}${path}` };
 }
 
 function authedCloneUrl({ host, cleanUrl }, token) {
