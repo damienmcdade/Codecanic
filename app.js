@@ -767,6 +767,30 @@ async function downloadMyData() {
 const COOKIE_CONSENT_KEY = "codecanic-cookie-consent";
 const ADSENSE_LOADER_URL = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8731629548430880";
 
+// Native app builds serve NO ads and set NO tracking cookies. With no tracking
+// on Apple devices we don't need App Tracking Transparency and must not show a
+// tracking/cookie consent prompt (App Store Review Guideline 5.1.2(i)).
+// Detection signals:
+//   - iOS: native SwiftUI WKWebView shell appends "CodecaniciOS/<ver>" to the
+//     user agent (see ios/Codecanic/Codecanic/ContentView.swift).
+//   - Android: Capacitor injects window.Capacitor.isNativePlatform().
+function isNativeApp() {
+  try {
+    const ua = navigator.userAgent || "";
+    if (/CodecaniciOS/i.test(ua)) return true;
+    if (
+      window.Capacitor &&
+      typeof window.Capacitor.isNativePlatform === "function" &&
+      window.Capacitor.isNativePlatform()
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function getConsent() {
   try {
     return localStorage.getItem(COOKIE_CONSENT_KEY) || "pending";
@@ -782,6 +806,7 @@ function setConsent(value) {
 }
 
 function loadAdSenseScript() {
+  if (isNativeApp()) return; // No ads / tracking cookies in native app builds.
   if (document.querySelector('script[data-codecanic-ads="1"]')) return;
   const s = document.createElement("script");
   s.src = ADSENSE_LOADER_URL;
@@ -793,6 +818,7 @@ function loadAdSenseScript() {
 }
 
 function loadAdSlots() {
+  if (isNativeApp()) return; // No ads / tracking cookies in native app builds.
   if (getConsent() !== "accepted") return;
   const slots = document.querySelectorAll("ins.adsbygoogle");
   for (const slot of slots) {
@@ -819,6 +845,14 @@ function applyConsent(consent) {
 }
 
 function maybeShowCookieBanner() {
+  if (isNativeApp()) {
+    // Native builds never load ads or set tracking cookies, so there is no
+    // consent decision to make and no prompt to show (guideline 5.1.2(i)).
+    document.body.classList.add("is-native");
+    document.body.classList.add("consent-essential");
+    hideCookieBanner();
+    return;
+  }
   const consent = getConsent();
   document.body.classList.toggle("consent-accepted", consent === "accepted");
   document.body.classList.toggle("consent-essential", consent === "essential");
@@ -838,6 +872,7 @@ function hideCookieBanner() {
 }
 
 function showCookieBanner() {
+  if (isNativeApp()) return; // No tracking cookies to manage in native builds.
   const banner = document.querySelector("#cookie-banner");
   if (banner) banner.hidden = false;
 }

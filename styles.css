@@ -1469,6 +1469,15 @@ button.is-firing {
   color: #fecaca;
 }
 
+/* Native app builds (iOS/Android via Capacitor) serve no ads and set no
+   tracking cookies, so the sponsor slots, the cookie/consent banner, and the
+   "Manage cookies" control are removed entirely (App Store guideline 5.1.2(i)). */
+body.is-native .ad-slot,
+body.is-native .cookie-banner,
+body.is-native #manage-cookies {
+  display: none !important;
+}
+
 .danger-card {
   width: min(520px, 100%);
   max-height: 90vh;
