@@ -759,6 +759,99 @@ button.is-firing {
   background: rgba(2, 6, 23, 0.6);
 }
 
+/* AI Keys (BYOK) panel */
+.key-panel {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.key-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.key-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.key-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgba(2, 6, 23, 0.5);
+}
+
+.key-status.connected {
+  color: var(--steel-0);
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.key-panel-actions {
+  display: flex;
+  gap: 14px;
+}
+
+.key-lede {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.key-how {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(8, 11, 16, 0.6);
+}
+
+.key-how ol {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.key-how a { color: var(--accent-strong); }
+
+.key-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.key-inputs input {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--steel-0);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.key-inputs input:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;

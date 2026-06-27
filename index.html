@@ -219,6 +219,42 @@
               <button type="button" data-filter="performance" aria-pressed="false">Performance</button>
             </div>
           </div>
+          <div class="key-panel" id="key-panel">
+            <div class="key-panel-head">
+              <div class="key-panel-title">
+                <span>AI Keys</span>
+                <span class="key-status" id="key-status">Not connected</span>
+              </div>
+              <div class="key-panel-actions">
+                <button type="button" class="link-button" id="key-how-toggle">How to connect</button>
+                <button type="button" class="link-button" id="key-collapse-toggle">Edit</button>
+              </div>
+            </div>
+            <div class="key-panel-body" id="key-panel-body">
+              <p class="muted key-lede">
+                AI-powered code repairs run on <strong>your own</strong> AI provider key.
+                Your key is stored only in this browser and sent with each repair request —
+                it is never saved on Codecanic's servers.
+              </p>
+              <div class="key-how" id="key-how" hidden>
+                <ol>
+                  <li><strong>Anthropic</strong> (required — Claude writes the code fixes): open
+                    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com → API Keys</a>,
+                    click <strong>Create Key</strong>, copy the key (starts with <code>sk-ant-</code>), and add credit.</li>
+                  <li><strong>OpenAI</strong> (optional): open
+                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com → API keys</a>,
+                    create a key (starts with <code>sk-</code>).</li>
+                  <li>Paste your key(s) below and click <strong>Save</strong>. Repairs now run on your keys.</li>
+                </ol>
+              </div>
+              <div class="key-inputs">
+                <input type="password" id="anthropic-key-input" placeholder="Anthropic key — sk-ant-…" autocomplete="off" spellcheck="false" />
+                <input type="password" id="openai-key-input" placeholder="OpenAI key (optional) — sk-…" autocomplete="off" spellcheck="false" />
+                <button type="button" class="secondary" id="key-save">Save</button>
+                <button type="button" class="ghost" id="key-disconnect" hidden>Disconnect</button>
+              </div>
+            </div>
+          </div>
           <div class="repair-toolbar">
             <label class="checkbox-row">
               <input type="checkbox" id="select-all" />

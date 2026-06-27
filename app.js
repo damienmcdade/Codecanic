@@ -107,19 +107,55 @@ async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   const org = activeOrg();
   if (org) headers["X-Codecanic-Org"] = org.slug;
+  // Bring-your-own-key: AI-powered repairs run on the user's OWN provider key.
+  // The key lives only in this browser (localStorage) and is sent per-request;
+  // it is never stored on Codecanic's servers.
+  const ak = getAnthropicKey();
+  if (ak) headers["x-anthropic-key"] = ak;
+  const ok = getOpenAiKey();
+  if (ok) headers["x-openai-key"] = ok;
   const response = await fetch(path, {
+    ...options,
     credentials: "same-origin",
-    headers,
-    ...options
+    headers
   });
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) {
     const err = new Error(data.error || "Request failed.");
     err.status = response.status;
+    err.code = data.code || null;
     throw err;
   }
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Bring-your-own-key (BYOK) storage. Keys are kept ONLY in this browser and
+// attached to API requests so the user's own AI provider pays for generation.
+// ---------------------------------------------------------------------------
+const ANTHROPIC_KEY_STORE = "codecanic-anthropic-key";
+const OPENAI_KEY_STORE = "codecanic-openai-key";
+
+function getAnthropicKey() {
+  try { return localStorage.getItem(ANTHROPIC_KEY_STORE) || ""; } catch { return ""; }
+}
+function getOpenAiKey() {
+  try { return localStorage.getItem(OPENAI_KEY_STORE) || ""; } catch { return ""; }
+}
+function setAnthropicKey(key) {
+  try {
+    const k = (key || "").trim();
+    if (k) localStorage.setItem(ANTHROPIC_KEY_STORE, k);
+    else localStorage.removeItem(ANTHROPIC_KEY_STORE);
+  } catch { /* storage unavailable — key simply isn't persisted */ }
+}
+function setOpenAiKey(key) {
+  try {
+    const k = (key || "").trim();
+    if (k) localStorage.setItem(OPENAI_KEY_STORE, k);
+    else localStorage.removeItem(OPENAI_KEY_STORE);
+  } catch { /* storage unavailable */ }
 }
 
 function currentFindings() {
@@ -576,6 +612,7 @@ const legalText = {
       <tr><td><code>codecanic_session</code></td><td>Codecanic (1st party)</td><td>Authentication — strictly necessary, set only after sign-in</td><td>14 days</td></tr>
       <tr><td><code>codecanic-cookie-consent</code> (localStorage)</td><td>Codecanic</td><td>Remember your consent choice on the cookie banner</td><td>Until you clear browser storage</td></tr>
       <tr><td><code>codecanic-state</code> (localStorage)</td><td>Codecanic</td><td>Cache your dashboard layout, connector status, audit trail</td><td>Until you sign out, delete the account, or clear browser storage</td></tr>
+      <tr><td><code>codecanic-anthropic-key</code> / <code>codecanic-openai-key</code> (localStorage)</td><td>Codecanic</td><td>Your own AI provider API key(s) for AI-powered repairs — stored only in this browser, never on our servers; sent with a repair request to the provider you connected</td><td>Until you click <em>Disconnect</em> in the AI Keys panel or clear browser storage</td></tr>
       <tr><td>Google AdSense cookies (<code>__gads</code>, <code>__gpi</code>, <code>IDE</code>, others)</td><td>Google (3rd party)</td><td>Ad delivery, frequency capping, fraud detection, optionally personalization. <strong>Only set after you accept on the cookie banner.</strong></td><td>Up to 13 months (Google policy)</td></tr>
     </tbody></table>
     <p>If you select <strong>Essential only</strong> on the cookie banner the AdSense script is not loaded at all — no Google cookies are set, no requests are made to Google ad servers, and the sponsor slots remain blank.</p>
@@ -633,8 +670,8 @@ const legalText = {
     <h4>9. Children</h4>
     <p>Codecanic is not directed to children under 16. We require explicit age confirmation at signup. If we learn that an account belongs to a child under 16 we will delete it and remove all associated data. To report such an account, email <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>.</p>
 
-    <h4>10. Automated decision-making</h4>
-    <p>Scan findings and proposed repairs are produced by deterministic rules and pattern matchers. We do not currently use machine-learning models that profile you or make automated decisions producing legal effects. If that changes we will update this policy and notify you.</p>
+    <h4>10. Automated decision-making &amp; AI</h4>
+    <p>Scan findings and most proposed repairs are produced by deterministic rules and pattern matchers. For code findings without a deterministic fix, you may optionally trigger an AI-generated repair. When you do, Codecanic sends the affected file and the finding to an AI provider (Anthropic, and OpenAI if you enable it) <strong>using an API key you supply</strong>. Your AI key is held only in your browser and forwarded with that single request; it is never stored on our servers, and the file content is sent only to the provider you connected, only when you start a repair. We do not use machine-learning models to profile you or make automated decisions producing legal effects, and every proposed repair is opened as a pull request for your review — nothing is merged automatically. If this changes we will update this policy and notify you.</p>
 
     <h4>11. Accessibility</h4>
     <p>Codecanic aims to meet WCAG 2.1 AA where practical. The dashboard supports keyboard navigation, screen-reader-compatible ARIA labels on interactive controls, sufficient color contrast, and respects <code>prefers-reduced-motion</code> for animations. We have not yet completed a formal accessibility audit. Report accessibility barriers to <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>; we will acknowledge within 5 business days.</p>
@@ -1587,6 +1624,10 @@ async function approveRepairs(findingIds) {
     saveState();
     renderJobs();
     showToast(error.message);
+    // Key missing/invalid → open the AI Keys panel so the user can connect one.
+    if (error.code === "anthropic_key_required" || error.code === "anthropic_key_invalid") {
+      openKeyPanel();
+    }
   }
 }
 
@@ -1742,6 +1783,80 @@ document.querySelector("#select-all").addEventListener("change", (event) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// AI Keys (BYOK) panel wiring.
+// ---------------------------------------------------------------------------
+function refreshKeyStatus() {
+  const status = document.querySelector("#key-status");
+  const disconnect = document.querySelector("#key-disconnect");
+  if (!status) return;
+  const connected = !!getAnthropicKey();
+  status.textContent = connected ? "Connected" : "Not connected";
+  status.classList.toggle("connected", connected);
+  if (disconnect) disconnect.hidden = !connected;
+}
+
+function setKeyPanelCollapsed(collapsed) {
+  const body = document.querySelector("#key-panel-body");
+  const toggle = document.querySelector("#key-collapse-toggle");
+  if (!body || !toggle) return;
+  body.hidden = collapsed;
+  toggle.textContent = collapsed ? "Edit" : "Hide";
+}
+
+function openKeyPanel() {
+  const panel = document.querySelector("#key-panel");
+  setKeyPanelCollapsed(false);
+  const input = document.querySelector("#anthropic-key-input");
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (input) setTimeout(() => input.focus(), 300);
+}
+
+function initKeyPanel() {
+  const anthropicInput = document.querySelector("#anthropic-key-input");
+  const openaiInput = document.querySelector("#openai-key-input");
+  const saveBtn = document.querySelector("#key-save");
+  const disconnectBtn = document.querySelector("#key-disconnect");
+  const howToggle = document.querySelector("#key-how-toggle");
+  const how = document.querySelector("#key-how");
+  const collapseToggle = document.querySelector("#key-collapse-toggle");
+  if (!anthropicInput || !saveBtn) return; // panel not present (e.g. policy pages)
+
+  anthropicInput.value = getAnthropicKey();
+  openaiInput.value = getOpenAiKey();
+  refreshKeyStatus();
+  // Start collapsed if a key is already connected.
+  setKeyPanelCollapsed(!!getAnthropicKey());
+
+  saveBtn.addEventListener("click", () => {
+    setAnthropicKey(anthropicInput.value);
+    setOpenAiKey(openaiInput.value);
+    refreshKeyStatus();
+    showToast(getAnthropicKey() ? "AI key saved in this browser." : "AI key cleared.");
+    if (getAnthropicKey()) setTimeout(() => setKeyPanelCollapsed(true), 600);
+  });
+
+  disconnectBtn.addEventListener("click", () => {
+    setAnthropicKey("");
+    setOpenAiKey("");
+    anthropicInput.value = "";
+    openaiInput.value = "";
+    refreshKeyStatus();
+    setKeyPanelCollapsed(false);
+    showToast("AI keys disconnected.");
+  });
+
+  howToggle.addEventListener("click", () => {
+    how.hidden = !how.hidden;
+    howToggle.textContent = how.hidden ? "How to connect" : "Hide guide";
+  });
+
+  collapseToggle.addEventListener("click", () => {
+    const body = document.querySelector("#key-panel-body");
+    setKeyPanelCollapsed(!body.hidden);
+  });
+}
+
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
@@ -1753,6 +1868,7 @@ syncActiveNavigation();
 refreshSession();
 maybeShowCookieBanner();
 loadAdSlots();
+initKeyPanel();
 
 // Password-reset deep link: /reset-password?token=... (served as the SPA shell).
 if (location.pathname === "/reset-password") {

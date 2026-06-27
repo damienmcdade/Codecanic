@@ -1,8 +1,10 @@
 import { json, readBody, resolveOrgContext, ClientError } from "./_lib.js";
 import * as repo from "./_repo.js";
 import { validateGitUrl } from "./_scanner.js";
-import { hasConnection } from "./_github.js";
+import { hasConnection, resolveRepoToken } from "./_github.js";
 import { JOB_TYPES } from "./_jobs.js";
+import { requireAnthropicKey } from "./_byok.js";
+import { pickAiEligible, generateAiPatches } from "./_ai_repair.js";
 import { logger } from "./_log.js";
 
 // Per-org enqueue rate limit (fixed window) — repair clones + pushes + opens PRs.
@@ -75,12 +77,45 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Enqueue the (slow) clone+patch+push+PR work.
+    // AI-powered code repairs (BYOK). Findings with no deterministic fix —
+    // SAST issues like eval()/injection/unsafe deserialization — are fixed by
+    // the user's OWN Claude model. This runs HERE, synchronously, so the user's
+    // API key is used and discarded within this request and is never written to
+    // the job payload or the database. Only the resulting diffs are enqueued.
+    let aiPatches = [];
+    let aiHandledIds = [];
+    let aiNotes = [];
+    if (pickAiEligible(selected).length > 0) {
+      // "Use your own key" requirement: AI repair needs the user's Anthropic key.
+      const anthropicKey = requireAnthropicKey(req);
+      const token = await resolveRepoToken(meta.host, context.organization.id);
+      if (token) {
+        try {
+          const ai = await generateAiPatches({
+            meta,
+            token,
+            findings: selected,
+            anthropicKey,
+          });
+          aiPatches = ai.patches;
+          aiHandledIds = ai.handledIds;
+          aiNotes = ai.notes;
+        } catch (err) {
+          // Surface key/auth/rate problems clearly (with the panel-popping code);
+          // anything else degrades to a deterministic-only repair.
+          if (err?.expose) throw err;
+          logger.error("repair.ai_generation_failed", { err });
+        }
+      }
+    }
+
+    // Enqueue the (slow) clone+patch+push+PR work. Note: only diffs and finding
+    // ids are persisted here — never the user's AI key.
     const job = await repo.enqueueJob({
       type: JOB_TYPES.REPAIR,
       organizationId: context.organization.id,
       userId: context.user.id,
-      payload: { reportId: report.id, findingIds, organizationId: context.organization.id }
+      payload: { reportId: report.id, findingIds, organizationId: context.organization.id, aiPatches, aiHandledIds, aiNotes }
     });
 
     json(res, 202, { jobId: job.id, type: "repair", status: job.status, pollUrl: `/api/jobs/${job.id}` });
@@ -88,6 +123,9 @@ export default async function handler(req, res) {
     const expose = error?.expose === true;
     const statusCode = expose ? error.statusCode || 400 : 500;
     if (!expose) logger.error("repair.handler_error", { err: error });
-    json(res, statusCode, { error: expose ? error.message : "Request failed." });
+    json(res, statusCode, {
+      error: expose ? error.message : "Request failed.",
+      ...(expose && error.code ? { code: error.code } : {}),
+    });
   }
 }

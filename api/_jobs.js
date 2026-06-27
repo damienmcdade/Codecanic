@@ -60,7 +60,16 @@ async function executeRepair(payload) {
   if (!selected.length) throw new Error("None of the selected findings exist in that report.");
   const meta = validateGitUrl(report.sourceUrl);
   const token = await resolveRepoToken(meta.host, payload.organizationId);
-  const result = await runRepair({ sourceUrl: report.sourceUrl, token, findings: selected, reportId: report.id });
+  const result = await runRepair({
+    sourceUrl: report.sourceUrl,
+    token,
+    findings: selected,
+    reportId: report.id,
+    // AI-generated edits computed at request time on the user's own key.
+    aiPatches: Array.isArray(payload.aiPatches) ? payload.aiPatches : [],
+    aiHandledIds: Array.isArray(payload.aiHandledIds) ? payload.aiHandledIds : [],
+    aiNotes: Array.isArray(payload.aiNotes) ? payload.aiNotes : [],
+  });
 
   if (!result.opened) {
     return { status: "no_changes", reportId: report.id, reason: result.reason, manual: result.manual };

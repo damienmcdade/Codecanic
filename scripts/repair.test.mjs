@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planRepairs, applyPlan, classifyBump, confidenceScore } from "../api/_repair.js";
+import { pickAiEligible } from "../api/_ai_repair.js";
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -93,6 +94,38 @@ try {
   console.log("\nNo auto-fixable findings → no empty work");
   const onlyManual = planRepairs([findings.find((f) => f.id.startsWith("secret:"))]);
   ok("plan with only secrets has zero patches", onlyManual.patches.length === 0);
+
+  console.log("\nAI repair (BYOK) — eligibility + code-rewrite apply");
+  // pickAiEligible: only unresolved SAST findings with a file:line target.
+  const aiFindings = [
+    { id: "sast:py-eval-exec:run.py:3", category: "sast", title: "Use of eval()/exec()", target: "run.py:3", fix: "Avoid eval/exec.", remediation: null },
+    { id: "sast:js-weak-hash:db.js:2", category: "sast", title: "Weak hash", target: "db.js:2", remediation: { kind: "code-replace", file: "db.js", line: 2, search: "x", replace: "y" } }, // already auto-fixable → excluded
+    { id: "secret:aws:config.js:2", category: "secret", title: "AWS key", target: "config.js:2", fix: "Rotate." }, // secret → excluded
+    { id: "dep:lodash", category: "dependency", title: "vuln", target: "npm · lodash@1", remediation: null }, // not sast → excluded
+    { id: "sast:weird", category: "sast", title: "no location", target: "(repository root)", remediation: null } // no file:line → excluded
+  ];
+  const eligible = pickAiEligible(aiFindings);
+  ok("pickAiEligible selects exactly the unresolved SAST finding", eligible.length === 1 && eligible[0].finding.id === "sast:py-eval-exec:run.py:3", JSON.stringify(eligible.map((e) => e.finding.id)));
+  ok("pickAiEligible parses file + line from target", eligible[0]?.file === "run.py" && eligible[0]?.line === 3);
+
+  // code-rewrite apply: literal multi-line snippet swap with guards.
+  await writeFile(join(dir, "run.py"), "import os\nx = 1\nresult = eval(user_input)\nprint(result)\n");
+  const rewriteOk = await applyPlan(dir, { patches: [
+    { kind: "code-rewrite", file: "run.py", find: "eval(user_input)", replace: "ast.literal_eval(user_input)", title: "Use of eval()" }
+  ] });
+  const rewritten = await readFile(join(dir, "run.py"), "utf8");
+  ok("code-rewrite applies a confident literal edit", rewritten.includes("ast.literal_eval(user_input)") && !/\beval\(user_input\)/.test(rewritten));
+  ok("code-rewrite reports the changed file", rewriteOk.changed.includes("run.py"));
+
+  const drift = await applyPlan(dir, { patches: [
+    { kind: "code-rewrite", file: "run.py", find: "this snippet is not in the file", replace: "anything", title: "drift" }
+  ] });
+  ok("code-rewrite skips when the source drifted (no match)", drift.changed.length === 0);
+
+  const escape = await applyPlan(dir, { patches: [
+    { kind: "code-rewrite", file: "../escape.py", find: "a", replace: "b", title: "traversal" }
+  ] });
+  ok("code-rewrite refuses a path that escapes the repo", escape.changed.length === 0);
 
   console.log("\nMerge confidence (semver risk signal)");
   ok("patch bump classified patch", classifyBump("4.17.15", "4.17.21") === "patch");
