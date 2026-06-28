@@ -39,3 +39,6 @@ ios/Codecanic/DerivedData/
 # OS
 .DS_Store
 .vercel
+ios/**/xcuserdata/
+ios/**/project.xcworkspace/
+*.xcuserstate
