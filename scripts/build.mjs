@@ -49,6 +49,48 @@ for (const file of staticFiles) {
 
 await cp("assets", "public/assets", { recursive: true });
 
+// Standalone /privacy and /terms pages (cleanUrls serves privacy.html at
+// /privacy). Content is extracted from the same legalText object app.js renders
+// in the in-app legal modal, so the pages can never drift from the app copy.
+// App Store review requires the privacy policy at a dedicated, directly
+// linkable URL — a modal on the homepage doesn't satisfy that.
+{
+  const appJs = await readFile("app.js", "utf8");
+  const extract = (key) => {
+    const m = appJs.match(new RegExp(`${key}: \`([\\s\\S]*?)\`,?\\n(?:  \\w+: \`|};)`));
+    if (!m) throw new Error(`legalText.${key} not found in app.js`);
+    return m[1];
+  };
+  const page = (title, body) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title} — Codecanic</title>
+  <meta name="description" content="${title} for Codecanic, the AI-assisted repository security scanner." />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .legal-page { max-width: 860px; margin: 0 auto; padding: 48px 20px 80px; }
+    .legal-page h3 { font-size: 1.9rem; margin-bottom: 4px; }
+    .legal-page h4 { margin-top: 28px; }
+    .legal-page a { color: inherit; }
+    .legal-back { display: inline-block; margin-bottom: 24px; color: var(--muted); text-decoration: none; }
+    .legal-back:hover { color: var(--ink); }
+  </style>
+</head>
+<body>
+  <main class="legal-page">
+    <a class="legal-back" href="/">&larr; Back to Codecanic</a>
+    ${body}
+  </main>
+</body>
+</html>
+`;
+  await writeFile("public/privacy.html", page("Privacy Policy", extract("privacy")));
+  await writeFile("public/terms.html", page("Terms of Service", extract("terms")));
+}
+
 // Stamp build info so /api/health reports an accurate, deploy-specific version.
 // commit comes from git when available (or a deploy env var); builtAt is always
 // accurate, so it answers "did my deploy actually go live?" regardless.

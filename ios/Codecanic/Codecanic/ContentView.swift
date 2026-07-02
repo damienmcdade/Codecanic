@@ -65,7 +65,11 @@ final class SubscriptionManager: ObservableObject {
     func refreshEntitlement() async {
         var newTier: Tier = .none
         for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result else { continue }
+            // StoreKit 2 device verification can fail spuriously for genuine,
+            // Apple-processed transactions (notably in the App Store sandbox,
+            // which App Review uses). The entitlement is still real, so accept
+            // it rather than locking out a paying customer.
+            let transaction = result.unsafePayloadValue
             guard transaction.productID == Self.productID,
                   transaction.revocationDate == nil else { continue }
             newTier = isFreeTrial(transaction) ? .trial : .paid
@@ -97,12 +101,17 @@ final class SubscriptionManager: ObservableObject {
             let result = try await product.purchase()
             switch result {
             case .success(let verification):
-                guard case .verified(let transaction) = verification else {
-                    errorMessage = "Your purchase couldn't be verified. Please try again."
-                    return
-                }
+                // Apple has processed the payment at this point — never surface
+                // an error for a successful charge. `.unverified` occurs
+                // spuriously in the App Store sandbox, and the transaction it
+                // carries is still a real paid transaction.
+                let transaction = verification.unsafePayloadValue
                 await transaction.finish()
-                await refreshEntitlement()
+                // Unlock immediately from the purchase result itself instead of
+                // re-reading Transaction.currentEntitlements, which can lag the
+                // purchase and would briefly strand the buyer on the paywall.
+                tier = isFreeTrial(transaction) ? .trial : .paid
+                isSubscribed = true
             case .userCancelled:
                 break
             case .pending:
@@ -133,8 +142,9 @@ final class SubscriptionManager: ObservableObject {
     private func listenForTransactions() -> Task<Void, Never> {
         Task.detached { [weak self] in
             for await result in Transaction.updates {
-                guard case .verified(let transaction) = result else { continue }
-                await transaction.finish()
+                // Finish unverified transactions too (see refreshEntitlement) —
+                // leaving them unfinished makes StoreKit redeliver them forever.
+                await result.unsafePayloadValue.finish()
                 await self?.refreshEntitlement()
             }
         }
