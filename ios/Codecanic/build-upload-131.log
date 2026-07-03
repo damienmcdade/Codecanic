@@ -1,0 +1,9 @@
+Running altool at path '/Applications/Xcode.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources/altool'...
+
+2026-07-02 08:07:25.307  INFO: [ContentDelivery.Uploader.AFCC50300] 
+==========================================
+UPLOAD SUCCEEDED with no errors
+Delivery UUID: 8d19631e-ef25-4382-93b5-9ce07f70c0dd
+Transferred 4253809 bytes in 0.224 seconds (19.0MB/s, 151.937Mbps)
+==========================================
+No errors uploading archive at 'build/export-131/Codecanic.ipa'.

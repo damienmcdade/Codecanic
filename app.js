@@ -618,7 +618,7 @@ const legalText = {
     <p>If you select <strong>Essential only</strong> on the cookie banner the AdSense script is not loaded at all — no Google cookies are set, no requests are made to Google ad servers, and the sponsor slots remain blank.</p>
 
     <h4>3. Advertising</h4>
-    <p>Codecanic is open to every team at no cost and supported by ads served by Google AdSense (publisher <code>ca-pub-8731629548430880</code>). When you accept ad cookies, Google may receive your approximate location, device, IP-derived signals, and AdSense cookie identifiers to deliver and measure personalized or non-personalized ads. Manage your Google ad preferences at <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">adssettings.google.com</a>. Google's privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a>.</p>
+    <p>The Codecanic web service is open to every team at no cost and supported by ads served by Google AdSense (publisher <code>ca-pub-8731629548430880</code>). (The iOS/macOS apps offer an optional subscription processed by Apple; we never receive your payment details.) When you accept ad cookies, Google may receive your approximate location, device, IP-derived signals, and AdSense cookie identifiers to deliver and measure personalized or non-personalized ads. Manage your Google ad preferences at <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer">adssettings.google.com</a>. Google's privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies.google.com/privacy</a>.</p>
     <p>EEA / UK / Swiss users: when consent is required, Google's IAB TCF v2.2 prompt may also appear before personalized ads are served. You can withdraw consent at any time by clicking <strong>Manage cookies</strong> in your account card.</p>
 
     <h4>4. Subprocessors (third parties that process data on our behalf)</h4>
@@ -688,7 +688,7 @@ const legalText = {
     <p>By creating an account or using Codecanic ("the Service") you agree to these terms. If you do not agree, do not use the Service.</p>
 
     <h4>1. The Service</h4>
-    <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The Service is open to every team at no cost and supported by sponsor advertising; there is no paid tier. You retain ownership of your code, your provider accounts, and any data you submit.</p>
+    <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The web Service is open to every team at no cost and supported by sponsor advertising. The Codecanic iOS and macOS apps offer an optional auto-renewable subscription, <strong>Codecanic Pro (Monthly)</strong>, priced at $14.99/month with a 3-day free trial for new subscribers; it is billed by Apple to your Apple Account, renews automatically unless cancelled at least 24 hours before the end of the current period, and can be managed or cancelled in your Apple Account settings. You retain ownership of your code, your provider accounts, and any data you submit.</p>
 
     <h4>2. Eligibility</h4>
     <p>You must be at least 16 years old and able to enter a binding contract. You may use the Service on behalf of a company; if so, you represent that you have authority to bind that company.</p>
@@ -730,7 +730,7 @@ const legalText = {
     <p>Counter-notices may be sent to the same address. We may terminate repeat infringers per our DMCA policy.</p>
 
     <h4>8. Cost and ads</h4>
-    <p>The Service is open to every team at no cost and supported by ads delivered via Google AdSense; see the Privacy Policy for ad details and your consent controls. There is no paid tier and no account upgrade — every team has the same full feature set, including scanning repositories and opening repair pull requests. We do not collect or process any payment information from you.</p>
+    <p>The web Service is open to every team at no cost and supported by ads delivered via Google AdSense; see the Privacy Policy for ad details and your consent controls. On the web there is no paid tier or account upgrade. In the Codecanic iOS and macOS apps, an optional Codecanic Pro (Monthly) auto-renewable subscription ($14.99/month, 3-day free trial) is available; purchases are processed entirely by Apple, we receive only subscription status, and we never collect or process your payment card information ourselves. Refunds for App Store purchases are handled by Apple under App Store policies.</p>
 
     <h4>9. Suspension and termination</h4>
     <p>You may delete your account at any time via the dashboard. We may suspend or terminate your access (with or without notice) if you violate these terms, applicable law, or our AUP. On termination, sections 7, 9, 10, 11, 12, 13, and 14 survive.</p>
