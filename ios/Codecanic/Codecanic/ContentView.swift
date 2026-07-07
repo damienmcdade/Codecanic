@@ -473,15 +473,25 @@ struct CodecanicWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
         private let fallbackURL: URL
         private let openExternally: (URL) -> Void
         private var didLoadFallback = false
+        private var downloadDestinations: [ObjectIdentifier: URL] = [:]
         weak var webView: WKWebView?
 
         init(fallbackURL: URL, openExternally: @escaping (URL) -> Void) {
             self.fallbackURL = fallbackURL
             self.openExternally = openExternally
+        }
+
+        private func topViewController() -> UIViewController? {
+            let windows = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+            var top = (windows.first { $0.isKeyWindow } ?? windows.first)?.rootViewController
+            while let presented = top?.presentedViewController { top = presented }
+            return top
         }
 
         @objc func pullToRefresh(_ sender: UIRefreshControl) {
@@ -514,6 +524,8 @@ struct CodecanicWebView: UIViewRepresentable {
         }
 
         // mailto:, tel:, and unsupported schemes — let the system handle them.
+        // Off-origin http(s) stays IN the shell on purpose: the GitHub OAuth
+        // flow navigates the main frame off-origin and back.
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = navigationAction.request.url else {
                 decisionHandler(.allow)
@@ -525,7 +537,102 @@ struct CodecanicWebView: UIViewRepresentable {
                 decisionHandler(.cancel)
                 return
             }
+            if navigationAction.shouldPerformDownload {
+                decisionHandler(.download)
+                return
+            }
             decisionHandler(.allow)
+        }
+
+        // MARK: - JavaScript dialogs
+        // WKWebView drops window.alert/confirm/prompt unless the UI delegate
+        // implements them — destructive-action confirms (delete repo/scan)
+        // would silently do nothing. Every path MUST call the completion
+        // handler or WebKit hangs the page.
+
+        func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+            guard let top = topViewController() else { completionHandler(); return }
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+            top.present(alert, animated: true)
+        }
+
+        func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+            guard let top = topViewController() else { completionHandler(false); return }
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+            top.present(alert, animated: true)
+        }
+
+        func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+                     defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping (String?) -> Void) {
+            guard let top = topViewController() else { completionHandler(nil); return }
+            let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+            alert.addTextField { $0.text = defaultText }
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
+                completionHandler(alert?.textFields?.first?.text ?? defaultText)
+            })
+            top.present(alert, animated: true)
+        }
+
+        // MARK: - Downloads (scan report / SBOM exports)
+        // Responses with Content-Disposition: attachment are silently dropped
+        // by WKWebView without download handling — export buttons would do
+        // nothing. Save to a temp file, then hand to the Files export picker.
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+            let disposition = (navigationResponse.response as? HTTPURLResponse)?
+                .value(forHTTPHeaderField: "Content-Disposition")?.lowercased() ?? ""
+            if disposition.contains("attachment") || !navigationResponse.canShowMIMEType {
+                decisionHandler(.download)
+            } else {
+                decisionHandler(.allow)
+            }
+        }
+
+        func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+            download.delegate = self
+        }
+
+        func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+            download.delegate = self
+        }
+
+        func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
+                      suggestedFilename: String) async -> URL? {
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            } catch {
+                return nil
+            }
+            let dest = dir.appendingPathComponent(suggestedFilename)
+            downloadDestinations[ObjectIdentifier(download)] = dest
+            return dest
+        }
+
+        func downloadDidFinish(_ download: WKDownload) {
+            guard let dest = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
+            let picker = UIDocumentPickerViewController(forExporting: [dest], asCopy: true)
+            picker.shouldShowFileExtensions = true
+            topViewController()?.present(picker, animated: true)
+        }
+
+        func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+            downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
+            guard let top = topViewController() else { return }
+            let alert = UIAlertController(
+                title: "Download Failed",
+                message: "The file couldn't be downloaded. Please check your connection and try again.",
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            top.present(alert, animated: true)
         }
     }
 }
