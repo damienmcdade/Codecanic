@@ -590,7 +590,7 @@ const legalText = {
   privacy: `
     <h3>Privacy Policy</h3>
     <p class="muted">Last updated: 2026-05-26. Version 2.</p>
-    <p>This policy describes what data Codecanic collects, why, where it goes, and how long we keep it. We are the data controller for the personal data described below. For any request — access, deletion, correction, complaint — email <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>. We respond within 30 days as required by GDPR Article 12(3).</p>
+    <p>This policy describes what data Codecanic collects, why, where it goes, and how long we keep it. Codecanic is operated by <strong>CyberWave Technologies LLC</strong> (Sacramento, CA, USA), which is the data controller for the personal data described below. For any request — access, deletion, correction, complaint — email <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a>. We respond within 30 days as required by GDPR Article 12(3).</p>
 
     <h4>1. What we collect and why</h4>
     <table class="legal-table"><tbody>
@@ -685,7 +685,7 @@ const legalText = {
   terms: `
     <h3>Terms of Service</h3>
     <p class="muted">Last updated: 2026-05-26. Version 2.</p>
-    <p>By creating an account or using Codecanic ("the Service") you agree to these terms. If you do not agree, do not use the Service.</p>
+    <p>Codecanic is operated by <strong>CyberWave Technologies LLC</strong> (Sacramento, CA, USA). By creating an account or using Codecanic ("the Service") you agree to these terms with CyberWave Technologies LLC. If you do not agree, do not use the Service.</p>
 
     <h4>1. The Service</h4>
     <p>Codecanic scans repositories and infrastructure you authorize, generates prioritized reports, and proposes repairs for your review. The web Service is open to every team at no cost and supported by sponsor advertising. The Codecanic iOS and macOS apps offer an optional auto-renewable subscription, <strong>Codecanic Pro (Monthly)</strong>, priced at $14.99/month with a 3-day free trial for new subscribers; it is billed by Apple to your Apple Account, renews automatically unless cancelled at least 24 hours before the end of the current period, and can be managed or cancelled in your Apple Account settings. You retain ownership of your code, your provider accounts, and any data you submit.</p>
@@ -745,7 +745,7 @@ const legalText = {
     <p>You agree to indemnify and hold Codecanic harmless from any claim, demand, loss, or expense (including reasonable legal fees) arising from your violation of these terms, your AUP violations, or your infringement of any third-party right (including IP rights) through your use of the Service.</p>
 
     <h4>13. Governing law and dispute resolution</h4>
-    <p>These terms are governed by the laws of the jurisdiction in which Codecanic is principally operated, without regard to its conflict-of-law rules. Before bringing any claim, you agree to first contact us at <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a> and attempt good-faith resolution for at least 30 days. If unresolved, any dispute will be brought in the small-claims court of competent jurisdiction or, at either party's election, before a neutral arbitrator under the rules of a recognized arbitration body. Class actions are waived to the extent permitted by law. Nothing in this section prevents you from exercising any non-waivable consumer rights under your local law.</p>
+    <p>These terms are governed by the laws of the State of California, USA, without regard to its conflict-of-law rules. Before bringing any claim, you agree to first contact us at <a href="mailto:info@cyberwaveglobal.com">info@cyberwaveglobal.com</a> and attempt good-faith resolution for at least 30 days. If unresolved, any dispute will be brought in the small-claims court of competent jurisdiction or, at either party's election, before a neutral arbitrator under the rules of a recognized arbitration body. Class actions are waived to the extent permitted by law. Nothing in this section prevents you from exercising any non-waivable consumer rights under your local law.</p>
 
     <h4>14. Severability + entire agreement</h4>
     <p>If any provision of these terms is held unenforceable, the remaining provisions remain in force. These terms (together with the Privacy Policy) constitute the entire agreement between you and Codecanic regarding the Service and supersede any prior agreements.</p>
