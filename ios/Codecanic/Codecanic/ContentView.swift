@@ -203,6 +203,10 @@ final class SubscriptionManager: ObservableObject {
 /// everyone else sees the paywall (Apple IAP is the only payment path).
 struct RootView: View {
     @EnvironmentObject private var subs: SubscriptionManager
+    @Environment(\.requestReview) private var requestReview
+    @AppStorage("reviewPromptSessionCount") private var sessionCount = 0
+    @AppStorage("reviewPromptLastVersion") private var lastPromptVersion = ""
+    @State private var countedThisSession = false
 
     var body: some View {
         if subs.isLoading {
@@ -212,9 +216,25 @@ struct RootView: View {
             }
         } else if subs.isSubscribed {
             ContentView().ignoresSafeArea()
+                .task { await maybeRequestReview() }
         } else {
             PaywallView()
         }
+    }
+
+    /// Ask for a rating only from engaged users: 3rd+ subscribed session,
+    /// 30s in (mid-scan, not mid-launch), once per app version. The system
+    /// additionally caps delivery at 3 prompts per 365 days.
+    private func maybeRequestReview() async {
+        guard !countedThisSession else { return }
+        countedThisSession = true
+        sessionCount += 1
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        guard sessionCount >= 3, lastPromptVersion != version else { return }
+        try? await Task.sleep(for: .seconds(30))
+        guard !Task.isCancelled else { return }
+        lastPromptVersion = version
+        requestReview()
     }
 }
 
