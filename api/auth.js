@@ -29,11 +29,21 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function clientKey(req, email) {
+function clientIp(req) {
   const fwd = req.headers["x-forwarded-for"] || "";
-  const ip = String(fwd).split(",")[0].trim() || req.socket?.remoteAddress || "unknown";
-  return `${ip}|${email}`;
+  return String(fwd).split(",")[0].trim() || req.socket?.remoteAddress || "unknown";
 }
+
+function clientKey(req, email) {
+  return `${clientIp(req)}|${email}`;
+}
+
+// Outbound-email throttles: signup and password-reset both trigger an email send
+// (and a bcrypt hash / token write) before any auth exists, so an unauthenticated
+// caller can otherwise burn cost and spam a victim's inbox. Keyed on IP so a single
+// origin can't fan out; windows are generous enough for legitimate retries.
+const EMAIL_SEND_MAX = 5;
+const EMAIL_SEND_WINDOW_MS = 60 * 60 * 1000;
 
 // A second lockout bucket keyed on the email ALONE. The per-(ip,email) bucket is
 // defeatable by rotating the spoofable X-Forwarded-For header, so this account-
@@ -84,6 +94,10 @@ async function signup(req, res) {
 
   if (!emailRegex.test(email)) {
     json(res, 400, { error: "Enter a valid email address." });
+    return;
+  }
+  if (!(await repo.checkRateLimit(`signup:${clientIp(req)}`, EMAIL_SEND_MAX, EMAIL_SEND_WINDOW_MS))) {
+    json(res, 429, { error: "Too many sign-up attempts. Please try again later." });
     return;
   }
   const pwErr = passwordPolicyError(password);
@@ -341,7 +355,11 @@ async function resendVerification(req, res) {
 async function requestPasswordReset(req, res) {
   const email = normalizeEmail((await readBody(req)).email);
   let devToken;
-  const user = email ? await repo.findUserByEmail(email) : null;
+  // Throttle before any lookup/send. Keyed on IP+email so an attacker can't spam a
+  // victim's inbox; when exceeded we fall through to the SAME generic response below,
+  // so the throttle never becomes an account-enumeration oracle.
+  const maySend = await repo.checkRateLimit(`pwreset:${clientKey(req, email)}`, EMAIL_SEND_MAX, EMAIL_SEND_WINDOW_MS);
+  const user = email && maySend ? await repo.findUserByEmail(email) : null;
   if (user) {
     const raw = newToken();
     await repo.createAuthToken({
