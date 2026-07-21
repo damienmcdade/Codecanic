@@ -15,13 +15,15 @@ private let brandAccent = Color(red: 0.08, green: 0.72, blue: 0.65)
 
 /// StoreKit 2 subscription state for Codecanic.
 ///
-/// The full app is gated behind a single auto-renewable subscription
-/// (`app.codecanic.pro.monthly`) with a 3-day free trial introductory offer.
+/// The full app is gated behind an auto-renewable subscription — monthly
+/// (`app.codecanic.pro.monthly`, 3-day free trial introductory offer) or
+/// annual (`app.codecanic.pro.yearly`). Either plan unlocks everything.
 /// Apple In-App Purchase is the ONLY payment path — required by App Store
 /// Review Guideline 3.1.1 for unlocking in-app digital features.
 @MainActor
 final class SubscriptionManager: ObservableObject {
     static let productID = "app.codecanic.pro.monthly"
+    static let yearlyProductID = "app.codecanic.pro.yearly"
 
     /// Access tier derived from the live StoreKit entitlement.
     /// - `none`: no active subscription → paywall.
@@ -29,7 +31,14 @@ final class SubscriptionManager: ObservableObject {
     /// - `paid`: active, paid subscription (full access).
     enum Tier: String { case none, trial, paid }
 
-    @Published private(set) var product: Product?
+    /// Which subscription the paywall CTA will buy.
+    enum Plan { case monthly, yearly }
+
+    @Published private(set) var product: Product?        // monthly
+    @Published private(set) var yearlyProduct: Product?  // annual (nil until approved/available)
+    /// Annual is pre-selected — the anchor that makes the yearly price read as
+    /// the obvious value. Falls back to monthly when yearly isn't offered.
+    @Published var selectedPlan: Plan = .yearly
     @Published private(set) var isSubscribed = false
     @Published private(set) var tier: Tier = .none
     @Published private(set) var isLoading = true
@@ -53,11 +62,29 @@ final class SubscriptionManager: ObservableObject {
 
     func loadProducts() async {
         do {
-            let products = try await Product.products(for: [Self.productID])
-            product = products.first
+            let products = try await Product.products(for: [Self.productID, Self.yearlyProductID])
+            product = products.first { $0.id == Self.productID }
+            yearlyProduct = products.first { $0.id == Self.yearlyProductID }
         } catch {
             errorMessage = "Couldn't load subscription details. Check your connection and try again."
         }
+        // Yearly not live (yet, or pulled) → the paywall quietly offers monthly only.
+        if yearlyProduct == nil { selectedPlan = .monthly }
+    }
+
+    /// The product the CTA will buy.
+    var selectedProduct: Product? {
+        selectedPlan == .yearly ? (yearlyProduct ?? product) : product
+    }
+
+    /// "Save 37%" chip value: how much the annual plan saves vs 12 months of
+    /// monthly, computed from the live store prices so a reprice never lies.
+    var yearlySavingsPercent: Int? {
+        guard let m = product?.price, let y = yearlyProduct?.price, m > 0 else { return nil }
+        let full = m * 12
+        guard full > y else { return nil }
+        let pct = (full - y) / full * 100
+        return Int((pct as NSDecimalNumber).doubleValue.rounded())
     }
 
     /// Resolve the live entitlement into a tier (none/trial/paid). Any active
@@ -70,7 +97,7 @@ final class SubscriptionManager: ObservableObject {
             // which App Review uses). The entitlement is still real, so accept
             // it rather than locking out a paying customer.
             let transaction = result.unsafePayloadValue
-            guard transaction.productID == Self.productID,
+            guard transaction.productID == Self.productID || transaction.productID == Self.yearlyProductID,
                   transaction.revocationDate == nil else { continue }
             newTier = isFreeTrial(transaction) ? .trial : .paid
         }
@@ -91,7 +118,7 @@ final class SubscriptionManager: ObservableObject {
     }
 
     func purchase() async {
-        guard let product else {
+        guard let product = selectedProduct else {
             errorMessage = "Subscription is unavailable right now. Please try again shortly."
             return
         }
@@ -152,16 +179,18 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Display helpers (drive the 3.1.2 disclosures from real product data)
 
-    /// e.g. "$14.99/month" — localized to the user's storefront.
+    /// e.g. "$14.99/month" or "$99.99/year" — localized to the user's
+    /// storefront and matching the currently selected plan.
     var priceText: String {
-        guard let product else { return "$14.99/month" }
-        return "\(product.displayPrice)/month"
+        guard let product = selectedProduct else { return "$14.99/month" }
+        let unit = (selectedPlan == .yearly && yearlyProduct != nil) ? "year" : "month"
+        return "\(product.displayPrice)/\(unit)"
     }
 
     /// e.g. "3 days free, then $14.99/month" — derived from the configured
     /// introductory offer when available, with a safe fallback.
     var offerText: String {
-        guard let product,
+        guard let product = selectedProduct,
               let intro = product.subscription?.introductoryOffer,
               intro.paymentMode == .freeTrial else {
             return "Then \(priceText)"
@@ -178,11 +207,11 @@ final class SubscriptionManager: ObservableObject {
         return "\(n) \(unit) free, then \(priceText)"
     }
 
-    /// Trial length for button labels, e.g. "3-Day", or nil if the product has
-    /// no free-trial introductory offer. Derived from StoreKit so the UI always
-    /// matches the duration configured in App Store Connect.
+    /// Trial length for button labels, e.g. "3-Day", or nil if the selected
+    /// plan has no free-trial introductory offer. Derived from StoreKit so the
+    /// UI always matches the duration configured in App Store Connect.
     var trialLengthText: String? {
-        guard let intro = product?.subscription?.introductoryOffer,
+        guard let intro = selectedProduct?.subscription?.introductoryOffer,
               intro.paymentMode == .freeTrial else { return nil }
         let n = intro.period.value
         let unit: String
@@ -269,7 +298,7 @@ struct PaywallView: View {
                 VStack(spacing: 22) {
                     header
                     benefitList
-                    offerCard
+                    planPicker
                     subscribeButton
                     legalDisclosure
                     footerLinks
@@ -331,6 +360,72 @@ struct PaywallView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Plan picker — annual anchored first with the save chip; collapses to
+    /// the classic single monthly card when the yearly product isn't live in
+    /// the store yet. The billed amount stays the most prominent element of
+    /// each card (Guideline 3.1.2).
+    @ViewBuilder
+    private var planPicker: some View {
+        if let yearly = subs.yearlyProduct {
+            VStack(spacing: 10) {
+                planCard(
+                    title: "Annual",
+                    price: "\(yearly.displayPrice)/year",
+                    caption: "Auto-renews yearly. Cancel anytime.",
+                    badge: subs.yearlySavingsPercent.map { "BEST VALUE · SAVE \($0)%" },
+                    selected: subs.selectedPlan == .yearly
+                ) { subs.selectedPlan = .yearly }
+                planCard(
+                    title: "Monthly",
+                    price: subs.product.map { "\($0.displayPrice)/month" } ?? "—",
+                    caption: "Auto-renews monthly. Cancel anytime.",
+                    badge: nil,
+                    selected: subs.selectedPlan == .monthly
+                ) { subs.selectedPlan = .monthly }
+            }
+        } else {
+            offerCard
+        }
+    }
+
+    /// One selectable plan row: price-forward, with an optional value badge.
+    @ViewBuilder
+    private func planCard(title: String, price: String, caption: String,
+                          badge: String?, selected: Bool, onTap: @escaping () -> Void) -> some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(selected ? brandAccent : .white.opacity(0.4))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(title).font(.headline).foregroundStyle(.white)
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 10, weight: .heavy))
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(brandAccent, in: Capsule())
+                                .foregroundStyle(.black)
+                        }
+                    }
+                    Text(caption).font(.caption2).foregroundStyle(.white.opacity(0.6))
+                }
+                Spacer()
+                Text(price)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(selected ? brandAccent : .white.opacity(0.85))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(selected ? 0.10 : 0.05))
+                    .overlay(RoundedRectangle(cornerRadius: 16)
+                        .stroke(selected ? brandAccent : Color.white.opacity(0.15), lineWidth: selected ? 1.5 : 1))
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var offerCard: some View {
