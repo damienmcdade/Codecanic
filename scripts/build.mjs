@@ -83,7 +83,16 @@ await cp("assets", "public/assets", { recursive: true });
   <main class="legal-page">
     <a class="legal-back" href="/">&larr; Back to Codecanic</a>
     ${body}
-  </main>
+    <!-- Cross-promotion strip (playbook §14) — the rest of the CyberWave fleet; own link omitted. -->
+    <footer class="muted" style="margin-top: 40px; font-size: 12.5px;">
+      More from CyberWave Technologies:
+      <a href="https://pcsexpress.app" target="_blank" rel="noopener">PCS Express</a> ·
+      <a href="https://kinsaga.app" target="_blank" rel="noopener">Kin Saga</a> ·
+      <a href="https://storymade.dev" target="_blank" rel="noopener">StoryMade</a> ·
+      <a href="https://communitysafe.app" target="_blank" rel="noopener">CommunitySafe</a> ·
+      <a href="https://marketscale-ai.vercel.app" target="_blank" rel="noopener">MarketScale AI</a> ·
+      <a href="https://apps.apple.com/us/app/id6782158794" target="_blank" rel="noopener">Byte Guardians</a>
+    </footer>
 </body>
 </html>
 `;
